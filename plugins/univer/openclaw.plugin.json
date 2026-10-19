@@ -1,0 +1,14 @@
+{
+  "id": "univer-app",
+  "name": "Univer",
+  "version": "0.1.0",
+  "description": "Offline spreadsheet editor with XLSX preview, import and export.",
+  "enabledByDefault": false,
+  "activation": { "onStartup": true },
+  "contracts": { "gatewayMethodDispatch": ["authenticated-request"] },
+  "categories": ["productivity"],
+  "mcpServers": {
+    "univer": { "command": "node", "args": ["./dist/server.cjs"] }
+  },
+  "configSchema": { "type": "object", "additionalProperties": false, "properties": {} }
+}

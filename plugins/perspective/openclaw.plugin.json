@@ -1,0 +1,12 @@
+{
+  "id": "perspective-app",
+  "name": "Perspective",
+  "version": "0.1.0",
+  "description": "Offline data exploration with pivot tables, filters and charts.",
+  "enabledByDefault": false,
+  "categories": ["productivity"],
+  "mcpServers": {
+    "perspective": { "command": "node", "args": ["./dist/server.cjs"] }
+  },
+  "configSchema": { "type": "object", "additionalProperties": false, "properties": {} }
+}

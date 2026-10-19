@@ -1,0 +1,35 @@
+{
+  "name": "@local-mcp/univer-app",
+  "version": "0.1.0",
+  "description": "Offline spreadsheet editor with an MCP Apps interface",
+  "type": "module",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "openclaw.plugin.json"
+  ],
+  "openclaw": {
+    "extensions": [
+      "./dist/extension.cjs"
+    ]
+  },
+  "bin": {
+    "univer-mcp-app": "dist/server.cjs"
+  },
+  "scripts": {
+    "start": "node dist/server.cjs"
+  },
+  "devDependencies": {
+    "@univerjs/preset-sheets-core": "1.1.0",
+    "@univerjs/presets": "1.1.0",
+    "@univerjs/sheets-formula": "1.1.0",
+    "exceljs": "4.4.0",
+    "jszip": "3.10.1",
+    "react": "19.2.0",
+    "react-dom": "19.2.0"
+  }
+}
