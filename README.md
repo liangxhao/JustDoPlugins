@@ -1,6 +1,6 @@
 # OpenClaw Extensions
 
-面向 OpenClaw 独立开发和分发的原生扩展集合。每个插件附带 MCP App，可独立安装、启停与交付；源码、依赖和交付包由本仓库统一管理。
+面向 OpenClaw 独立开发和分发的原生扩展集合，同时支持普通插件和按需附带 MCP App 的插件。各插件可独立安装、启停与交付；源码、依赖和交付包由本仓库统一管理。
 
 ## 当前插件
 
@@ -16,6 +16,7 @@
 - [文档导航](docs/README.md)
 - [安装与使用](docs/guides/install-and-use.md)
 - [开发指南](docs/development/README.md)
+- [MCP App 接入与验收](docs/development/mcp-app-development.md)
 - [离线构建与交付](docs/development/offline-delivery.md)
 
 ## 仓库概览

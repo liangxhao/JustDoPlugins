@@ -12,6 +12,8 @@
 
 运行、构建和打包不依赖宿主源码或固定的宿主目录。准备与离线交付步骤见[离线构建与交付](offline-delivery.md)。
 
+普通扩展无需实现交互界面。需要 MCP App 时，先按[MCP App 开发与宿主接入](mcp-app-development.md)选择能力，再用[接入 checklist](mcp-app-checklist.md)核对身份来源、界面显示及所选入口。
+
 ## 目录与开发流程
 
 ```text
@@ -69,5 +71,7 @@ npm run pack:apps
 ## 继续阅读
 
 - [架构与隔离边界](architecture.md)：MCP Apps、数据存储、并发与离线资源。
-- [测试与验收](testing.md)：自动测试、浏览器验证和宿主集成验收。
+- [MCP App 开发与宿主接入](mcp-app-development.md)：界面协议、身份与来源、入口元数据、稳定回执和可选恢复。
+- [MCP App 接入 checklist](mcp-app-checklist.md)：区分必需项、按需项和真实宿主验收。
+- [测试与验收](testing.md)：自动测试、浏览器验证、状态保留、历史投影与权限验收。
 - [当前插件列表](../plugins/README.md)：插件身份、功能与文档入口。

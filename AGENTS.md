@@ -22,6 +22,8 @@
 - `docs/plugins/README.md` 维护当前插件列表，`docs/plugins/<name>/README.md` 是各插件详细说明的唯一维护源。
 - 插件源码目录的 README 仅保留简介与导航；打包脚本将对应的详细说明复制为交付包 README。详细说明需能独立阅读，不能依赖交付包之外的仓库链接。
 - 新增插件或变更能力时，同步更新文档导航、插件列表和受影响的详细说明。
+- 开发指导只记录插件能力、公开协议和必要的集成约束；宿主菜单、侧栏布局、Tab 路由、窗口实现与内部验收由宿主工程维护，不写成插件职责。
+- 涉及 MCP App 时，先读 [MCP App 开发与宿主接入](docs/development/mcp-app-development.md)，按 [接入 checklist](docs/development/mcp-app-checklist.md) 验证必需项和所选能力；普通插件无需实现 App 界面或入口。
 
 ## 验证
 

@@ -2,13 +2,15 @@
 
 ## 扩展与 MCP App
 
-每个插件是独立的 OpenClaw 原生扩展，通过 `openclaw.plugin.json` 声明附带的 stdio MCP 服务。
+当前两个插件是独立的 OpenClaw 原生扩展，通过 `openclaw.plugin.json` 声明附带的 stdio MCP 服务。
 OpenClaw 管理相对安装路径、服务启动与停止；卸载或停用扩展会撤下相应的服务和应用入口。
 业务工具由 MCP 服务提供，共享服务与界面代码集中在仓库的 `shared/` 目录。
 
 应用前端编译为单个 `app.html`，服务编译为独立的 `server.cjs`。
 交付包包含执行需要的静态资源，运行时不安装 npm 依赖；OpenClaw 扩展入口使用宿主提供的公开 SDK。
 插件清单与扩展入口负责接入，模型调用和界面操作复用同一套 MCP 服务。
+
+普通扩展无需提供 MCP App。增加交互界面时，按[MCP App 开发与宿主接入](mcp-app-development.md)实现身份与来源校验和标准界面协议；启动入口、图标和文件能力按需选择，验收见[接入 checklist](mcp-app-checklist.md)。
 
 ## 数据与并发
 
@@ -26,7 +28,7 @@ OpenClaw 管理相对安装路径、服务启动与停止；卸载或停用扩�
 ## 离线与隔离
 
 两个应用都通过标准 MCP Apps `ui://` 和 AppBridge 交互。`open_editor` 额外声明
-原生支持的 App-only global 入口，用于“+”菜单；普通 MCP Apps 客户端仍可调用创建工具。
+原生支持的 App-only global 入口，声明无需模型调用的启动能力；普通 MCP Apps 客户端仍可调用创建工具。
 
 编辑器静态 JS、CSS、WASM、字体全部内嵌在交付文件中。MCP 子进程启动一个随机端口的
 `127.0.0.1` 静态页面，URL 使用每次启动重新生成的随机路径，检查 Host 和精确路径，
