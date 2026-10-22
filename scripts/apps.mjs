@@ -7,12 +7,14 @@ import { fileURLToPath } from 'node:url';
 
 export const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
-/** Repository registration only; this is not OpenClaw or MCP capability metadata. */
+/** Extension App registration only; this is not OpenClaw or MCP capability metadata. */
 export async function discoverApps(root = repositoryRoot) {
   const names = [];
-  for (const entry of await readdir(join(root, 'plugins'), { withFileTypes: true })) {
+  for (const entry of await readdir(join(root, 'plugins', 'extensions'), {
+    withFileTypes: true,
+  })) {
     if (!entry.isDirectory()) continue;
-    const directory = join(root, 'plugins', entry.name);
+    const directory = join(root, 'plugins', 'extensions', entry.name);
     const pkg = JSON.parse(await readFile(join(directory, 'package.json'), 'utf8'));
     const hasUi = existsSync(join(directory, 'app.ts'));
     if (!hasUi && pkg.mcpApp === undefined) continue;
@@ -46,11 +48,11 @@ export async function sourceFingerprint(files, root = repositoryRoot) {
 }
 
 export async function assertFreshAppBuild(name, root = repositoryRoot) {
-  const directory = join(root, 'plugins', name, 'dist');
+  const directory = join(root, 'plugins', 'extensions', name, 'dist');
   const manifest = JSON.parse(await readFile(join(directory, 'integrity.json'), 'utf8'));
   assert.ok(manifest.sourceFiles?.length, `${name}: rebuild the App before running tests`);
   assert.ok(
-    manifest.sourceFiles.includes(`plugins/${name}/app.ts`),
+    manifest.sourceFiles.includes(`plugins/extensions/${name}/app.ts`),
     `${name}: missing App entry fingerprint`,
   );
   assert.equal(

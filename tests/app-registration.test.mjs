@@ -8,7 +8,8 @@ import { assertFreshAppBuild, discoverApps, sourceFingerprint } from '../scripts
 
 async function fixture(run) {
   const root = await mkdtemp(join(tmpdir(), 'app-registration-'));
-  await mkdir(join(root, 'plugins'));
+  for (const type of ['extensions', 'skills', 'mcp-servers', 'hooks'])
+    await mkdir(join(root, 'plugins', type), { recursive: true });
   try {
     await run(root);
   } finally {
@@ -16,8 +17,8 @@ async function fixture(run) {
     await rm(root, { recursive: true, force: true });
   }
 }
-async function plugin(root, name, pkg, ui = true) {
-  const path = join(root, 'plugins', name);
+async function plugin(root, name, pkg, ui = true, type = 'extensions') {
+  const path = join(root, 'plugins', type, name);
   await mkdir(path);
   await writeFile(join(path, 'package.json'), JSON.stringify(pkg));
   if (ui)
@@ -31,12 +32,24 @@ test('every registered App is discovered without another test allowlist; ordinar
     await plugin(root, 'first', { mcpApp: { contractVersion: 1 } });
     assert.deepEqual(await discoverApps(root), ['first', 'second']);
   }));
+
+test('other plugin types do not enter extension App discovery or contract checks', () =>
+  fixture(async root => {
+    await plugin(root, 'sample', { mcpApp: { contractVersion: 1 } });
+    const skill = join(root, 'plugins/skills/instructions');
+    await mkdir(skill);
+    await writeFile(join(skill, 'SKILL.md'), '# Instructions');
+    for (const type of ['mcp-servers', 'hooks'])
+      await plugin(root, 'sample', { mcpApp: { contractVersion: 99 } }, true, type);
+    assert.deepEqual(await discoverApps(root), ['sample']);
+  }));
+
 test('an unregistered UI or unsupported App contract cannot silently skip the gate', () =>
   fixture(async root => {
     await plugin(root, 'missing', {});
     await assert.rejects(() => discoverApps(root), /register mcpApp.contractVersion/);
     await writeFile(
-      join(root, 'plugins/missing/package.json'),
+      join(root, 'plugins/extensions/missing/package.json'),
       JSON.stringify({ mcpApp: { contractVersion: 2 } }),
     );
     await assert.rejects(() => discoverApps(root), /register mcpApp.contractVersion/);
@@ -44,9 +57,9 @@ test('an unregistered UI or unsupported App contract cannot silently skip the ga
 test('stale sources and modified built assets cannot reuse an old App proof', () =>
   fixture(async root => {
     await plugin(root, 'sample', { mcpApp: { contractVersion: 1 } });
-    const dist = join(root, 'plugins/sample/dist');
+    const dist = join(root, 'plugins/extensions/sample/dist');
     await mkdir(dist);
-    const sourceFiles = ['plugins/sample/app.ts'];
+    const sourceFiles = ['plugins/extensions/sample/app.ts'];
     const assets = {};
     for (const file of ['app.html', 'server.cjs']) {
       await writeFile(join(dist, file), file);

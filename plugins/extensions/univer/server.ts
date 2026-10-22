@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
-import { createWorkbook, matrixSchema, scalar, titleSchema } from '../../shared/contracts';
-import { startServer } from '../../shared/server';
+import { createWorkbook, matrixSchema, scalar, titleSchema } from '../../../shared/contracts';
+import { startServer } from '../../../shared/server';
 import { workspaceFileCache } from './file-cache';
 
 const files = workspaceFileCache();

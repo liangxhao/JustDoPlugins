@@ -9,8 +9,8 @@ import serverWasm from '@perspective-dev/server/dist/wasm/perspective-server.was
 import viewer, { type ViewerConfigUpdate } from '@perspective-dev/viewer';
 import viewerWasm from '@perspective-dev/viewer/dist/wasm/perspective-viewer.wasm';
 
-import { csvRecords, toCsv } from '../../shared/csv';
-import { mountApp } from '../../shared/ui';
+import { csvRecords, toCsv } from '../../../shared/csv';
+import { mountApp } from '../../../shared/ui';
 
 const bytes = (base64: string) => Uint8Array.from(atob(base64), c => c.charCodeAt(0)).buffer;
 perspective.init_client(bytes(clientWasm));

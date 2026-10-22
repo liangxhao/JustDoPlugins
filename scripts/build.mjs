@@ -14,11 +14,11 @@ const requested = process.argv[2];
 const apps = await discoverApps();
 for (const name of requested ? [requested] : apps) {
   if (!apps.includes(name)) throw new Error('Unknown registered app.');
-  const output = join(root, 'plugins', name, 'dist');
+  const output = join(root, 'plugins', 'extensions', name, 'dist');
   await mkdir(output, { recursive: true });
   const browser = await build({
     absWorkingDir: root,
-    entryPoints: [`plugins/${name}/app.ts`],
+    entryPoints: [`plugins/extensions/${name}/app.ts`],
     bundle: true,
     write: false,
     outfile: 'app.js',
@@ -50,7 +50,7 @@ for (const name of requested ? [requested] : apps) {
   await writeFile(join(output, 'app.html'), html);
   const server = await build({
     absWorkingDir: root,
-    entryPoints: [`plugins/${name}/server.ts`],
+    entryPoints: [`plugins/extensions/${name}/server.ts`],
     outfile: join(output, 'server.cjs'),
     bundle: true,
     format: 'cjs',
@@ -59,10 +59,10 @@ for (const name of requested ? [requested] : apps) {
     banner: { js: '#!/usr/bin/env node' },
     metafile: true,
   });
-  if (existsSync(join(root, 'plugins', name, 'extension.ts'))) {
+  if (existsSync(join(root, 'plugins', 'extensions', name, 'extension.ts'))) {
     await build({
       absWorkingDir: root,
-      entryPoints: [`plugins/${name}/extension.ts`],
+      entryPoints: [`plugins/extensions/${name}/extension.ts`],
       outfile: join(output, 'extension.cjs'),
       bundle: true,
       format: 'cjs',
@@ -119,8 +119,8 @@ for (const name of requested ? [requested] : apps) {
       [
         ...Object.keys(browser.metafile.inputs),
         ...Object.keys(server.metafile.inputs),
-        `plugins/${name}/package.json`,
-        `plugins/${name}/openclaw.plugin.json`,
+        `plugins/extensions/${name}/package.json`,
+        `plugins/extensions/${name}/openclaw.plugin.json`,
         'scripts/build.mjs',
         'scripts/apps.mjs',
         'package.json',

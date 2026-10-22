@@ -6,7 +6,7 @@ import ExcelJS from 'exceljs';
 import { spreadsheetFixture } from './xlsx-fixture.mjs';
 
 const output = await build({
-  entryPoints: ['plugins/univer/xlsx.ts'],
+  entryPoints: ['plugins/extensions/univer/xlsx.ts'],
   bundle: true,
   platform: 'node',
   format: 'cjs',

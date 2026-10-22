@@ -1,15 +1,19 @@
 # 文档导航
 
-本目录按通用使用、开发维护和插件详情组织文档。根 README 只保留项目概览；插件的功能、工具和限制以各自的详细文档为准。
+本目录按通用使用、开发维护和四类插件详情组织文档。根 README 只保留项目概览；插件的功能、工具和限制以各自的详细文档为准。
 
-## 使用扩展
+## 插件分类与使用
 
 | 文档                                         | 内容                                           |
 | -------------------------------------------- | ---------------------------------------------- |
-| [当前插件列表](plugins/README.md)            | 插件身份、能力对比、交付目录和详细文档入口     |
-| [安装与使用](guides/install-and-use.md)      | 安装、启停、打开应用、本地文档与常见问题       |
-| [Univer](plugins/univer/README.md)           | 表格编辑、文件预览、源文件保存、MCP 工具与限制 |
-| [Perspective](plugins/perspective/README.md) | 数据导入、分析视图、MCP 工具与限制             |
+| [插件分类与列表](plugins/README.md) | extensions、skills、mcp-servers、hooks 的分类与入口 |
+| [Extensions 原生扩展](plugins/extensions/README.md) | 当前扩展、能力对比和交付目录 |
+| [Skills 技能](plugins/skills/README.md) | 独立技能的目录约定，当前暂无实现 |
+| [MCP Servers 独立服务](plugins/mcp-servers/README.md) | 独立 MCP 服务的目录约定，当前暂无实现 |
+| [Hooks 事件钩子](plugins/hooks/README.md) | 独立钩子的目录约定，当前暂无实现 |
+| [扩展安装与使用](guides/install-and-use.md) | 当前两个扩展的安装、启停、打开应用与本地文档 |
+| [Univer](plugins/extensions/univer/README.md) | 表格编辑、文件预览、源文件保存、MCP 工具与限制 |
+| [Perspective](plugins/extensions/perspective/README.md) | 数据导入、分析视图、MCP 工具与限制 |
 
 ## 开发与交付
 
@@ -38,10 +42,13 @@ docs/
 │   └── offline-delivery.md
 └── plugins/
     ├── README.md
-    ├── univer/
-    │   └── README.md
-    └── perspective/
-        └── README.md
+    ├── extensions/
+    │   ├── README.md
+    │   ├── univer/README.md
+    │   └── perspective/README.md
+    ├── skills/README.md
+    ├── mcp-servers/README.md
+    └── hooks/README.md
 ```
 
-新增插件时，在 `plugins/` 下增加独立的文档目录，并同步更新插件列表和本页入口。源码目录 README 只提供导航；交付包 README 从对应详细文档生成。
+新增插件时，在 `docs/plugins/<type>/<name>/` 下增加详细文档，并同步更新对应类型的插件列表和本页入口。源码目录 README 只提供导航；扩展交付包 README 从对应详细文档生成。以上路径以仓库根目录为基准。

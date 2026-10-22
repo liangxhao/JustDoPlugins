@@ -7,7 +7,7 @@ WASM 查询引擎、表格和图表资源随交付包提供，运行时不依赖
 
 ## 安装与打开
 
-安装 Perspective 的完整交付目录或对应 `.tgz` 文件，完成扩展审查并启用。仓库生成的独立导入目录为 `dist/plugins/perspective/`。
+安装 Perspective 的完整交付目录或对应 `.tgz` 文件，完成扩展审查并启用。仓库生成的独立导入目录为 `dist/plugins/extensions/perspective/`，压缩包位于 `dist/archives/extensions/`。
 包内包含原生清单、扩展入口、说明和完整 `dist/`，运行使用宿主的 Node 24，无需安装 npm 依赖或联网。
 
 启用后附带的 MCP 服务由 OpenClaw 管理，可通过手动应用入口或模型工具打开。

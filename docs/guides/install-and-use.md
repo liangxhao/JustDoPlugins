@@ -1,6 +1,6 @@
 # 安装与使用
 
-本文介绍两个扩展共用的安装和文档操作流程。插件特有的功能、格式、工具和容量限制见[当前插件列表](../plugins/README.md)中的详细文档。
+本文介绍 extensions 类别中两个扩展共用的安装和文档操作流程。插件特有的功能、格式、工具和容量限制见[Extensions 列表](../plugins/extensions/README.md)中的详细文档。其他类型见[插件分类与列表](../plugins/README.md)。
 
 ## 安装准备
 
@@ -14,7 +14,7 @@
 2. 按宿主的审查流程完成导入并启用父扩展。
 3. 确认扩展声明的 MCP 服务已发现，再从应用入口或模型创建工具打开。
 
-可导入生成的 `dist/plugins/univer/`、`dist/plugins/perspective/` 或 `dist/archives/` 下对应的压缩包。以上路径均以仓库根目录为基准。
+可导入生成的 `dist/plugins/extensions/univer/`、`dist/plugins/extensions/perspective/` 或 `dist/archives/extensions/` 下对应的压缩包。以上路径均以仓库根目录为基准。
 
 插件随包包含静态资源与服务代码。运行使用宿主的 Node 24，不需要手工安装依赖、设置 API Key 或下载浏览器资源；附带的 MCP 服务由 OpenClaw 自动管理。
 已经导入原生扩展时，不要重复手工配置同名 MCP 服务，以免覆盖原生服务。
@@ -48,8 +48,8 @@
 从仓库根目录构建后，可在终端启动单个服务：
 
 ```sh
-node plugins/univer/dist/server.cjs
-node plugins/perspective/dist/server.cjs
+node plugins/extensions/univer/dist/server.cjs
+node plugins/extensions/perspective/dist/server.cjs
 ```
 
 以上是两个服务各自的启动命令，按需单独运行。手动配置 stdio 客户端时，将对应入口解析为本地实际路径后填入参数。

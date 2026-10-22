@@ -10,7 +10,7 @@
 
 ### 扩展和服务
 
-- [ ] 本仓库 App 在 `package.json` 注册 `mcpApp.contractVersion: 1`，提供 `app.ts` 与 `server.ts`；新增 App 自动进入构建、规范测试和打包列表。
+- [ ] 扩展位于 `plugins/extensions/<name>/`，在 `package.json` 注册 `mcpApp.contractVersion: 1`，提供 `app.ts` 与 `server.ts`；新增 App 自动进入扩展的构建、规范测试和打包列表。
 - [ ] 清单与扩展入口的 ID 一致；MCP 服务名、工具引用、资源 URI 和交付路径逐项对应且稳定，不要求它们同名，也不依赖开发机或下游源码目录。
 - [ ] 完整目录或压缩包可独立导入；启用后服务可发现，停用后相关服务和入口撤下。
 - [ ] 当前宿主支持并开启 MCP Apps，工具策略允许；MCP 服务没有被同名覆盖配置替换。

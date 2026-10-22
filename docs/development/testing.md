@@ -1,6 +1,6 @@
 # 测试与验收
 
-所有命令从仓库根目录执行。先按[开发指南](README.md)准备依赖与 SDK，修改源码后重新构建。
+所有命令从仓库根目录执行。以下流程验证当前 `plugins/extensions/` 中的扩展；其余类型的测试要求随实际插件补充。先按[开发指南](README.md)准备依赖与 SDK，修改源码后重新构建。
 
 MCP App 发布使用[接入 checklist](mcp-app-checklist.md)记录必需项和所选能力。认证来源、入口元数据和资源权限在匹配的 OpenClaw 环境中验收；没有选择的文件、连续编辑或恢复能力不作为发布门槛。
 
@@ -28,7 +28,7 @@ npm run pack:apps
 单独排查时可运行 `node --test tests/xlsx-writeback.test.mjs`，或用 `npm run test:ui -- univer-write` 验证指定浏览器场景。
 浏览器模式还包括 `univer`、`perspective` 和 `univer-file`。
 
-App 注册和发现统一位于 `scripts/apps.mjs`。新增 `plugins/<name>/app.ts` 却没有注册 `mcpApp.contractVersion: 1`，或注册后缺少入口，检查直接失败；普通插件不加入此列表。测试从每个真实 MCP 服务列出并读取全部 App UI 资源，不维护另一份 App 名单。
+App 注册和发现统一位于 `scripts/apps.mjs`，仅扫描 `plugins/extensions/`。新增 `plugins/extensions/<name>/app.ts` 却没有注册 `mcpApp.contractVersion: 1`，或注册后缺少入口，检查直接失败；普通扩展不加入此列表。`tests/app-registration.test.mjs` 同时验证 skills、mcp-servers、hooks 不进入扩展 App 流程。测试从每个真实 MCP 服务列出并读取全部 App UI 资源，不维护另一份 App 名单。
 
 `tests/app-contract-checks.mjs` 的同一组断言同时用于构建界面和四个故意不合规的 App，验证漏声明、只声明不处理、撤回不恢复及压缩画布都会被拒绝。通用检查证明实际能力声明、工具栏几何、按钮可访问、原 DOM 和未提交标题保留，以及布局通知不调用业务工具；编辑器内部撤销、选区、筛选和原生授权仍需专用测试与集成验收。
 
@@ -76,4 +76,4 @@ App 注册和发现统一位于 `scripts/apps.mjs`。新增 `plugins/<name>/app.
 ## 报告与产物
 
 `test-results/ui/` 保存浏览器截图、测试工作簿和验证记录，不纳入 Git。
-`dist/plugins/` 与 `dist/archives/` 保存可交付产物；结构和离线准备要求见[离线构建与交付](offline-delivery.md)。
+当前扩展的可交付产物位于 `dist/plugins/extensions/` 与 `dist/archives/extensions/`；结构和离线准备要求见[离线构建与交付](offline-delivery.md)。

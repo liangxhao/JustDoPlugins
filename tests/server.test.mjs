@@ -19,7 +19,7 @@ async function connect(name, dir) {
 }
 for (const name of ['univer', 'perspective']) {
   test(`${name}: bundled dependencies include complete license notices`, async () => {
-    const directory = resolve('plugins', name, 'dist');
+    const directory = resolve('plugins', 'extensions', name, 'dist');
     const notices = JSON.parse(await readFile(join(directory, 'THIRD_PARTY_NOTICES.json'), 'utf8'));
     assert.ok(notices.length > 0);
     const identities = notices.map(pkg => `${pkg.name}@${pkg.version}`);
@@ -43,7 +43,7 @@ for (const name of ['univer', 'perspective']) {
     const dir = await mkdtemp(join(tmpdir(), 'mcp-app-test-'));
     let client;
     try {
-      await cp(resolve('plugins', name, 'dist'), join(dir, 'package'), { recursive: true });
+      await cp(resolve('plugins', 'extensions', name, 'dist'), join(dir, 'package'), { recursive: true });
       client = await connect(name, dir);
       const { tools } = await client.listTools();
       const entry = tools.find(tool => tool.name === 'open_editor');
@@ -184,7 +184,7 @@ for (const name of ['univer', 'perspective']) {
       });
       assert.equal(unknown.isError, true);
       const integrity = JSON.parse(
-        await readFile(resolve('plugins', name, 'dist/integrity.json'), 'utf8'),
+        await readFile(resolve('plugins', 'extensions', name, 'dist/integrity.json'), 'utf8'),
       );
       assert.ok(integrity.assets['app.html']);
     } finally {

@@ -90,7 +90,7 @@ for (const name of apps) {
         await client.connect(
           new StdioClientTransport({
             command: process.execPath,
-            args: [resolve('plugins', name, 'dist/server.cjs')],
+            args: [resolve('plugins', 'extensions', name, 'dist/server.cjs')],
             env: { ...process.env, MCP_APP_DATA_DIR: directory },
             stderr: 'pipe',
           }),

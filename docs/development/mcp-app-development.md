@@ -24,7 +24,7 @@
 
 ## 2 让扩展和服务能独立运行
 
-每个插件位于 `plugins/<name>/`。在 `openclaw.plugin.json` 声明稳定的扩展 ID 和 MCP 服务，在 `package.json` 的 `openclaw.extensions` 指定实际交付的扩展入口。例如：
+需要本指南所述原生扩展接入的插件位于 `plugins/extensions/<name>/`，附带的 MCP 服务和 MCP App 随扩展维护。在 `openclaw.plugin.json` 声明稳定的扩展 ID 和 MCP 服务，在 `package.json` 的 `openclaw.extensions` 指定实际交付的扩展入口。例如：
 
 ```json
 {
@@ -55,7 +55,7 @@
 
 ### 本仓库的 App 注册与强制检查
 
-带有 `plugins/<name>/app.ts` 的插件必须在自身 `package.json` 注册 `mcpApp.contractVersion: 1`，并提供 `server.ts`。`scripts/apps.mjs` 自动发现这些 App；漏注册、版本不支持或入口不齐会使类型检查、构建和测试失败。没有 App 入口和注册字段的普通插件不受影响。
+带有 `plugins/extensions/<name>/app.ts` 的扩展必须在自身 `package.json` 注册 `mcpApp.contractVersion: 1`，并提供 `server.ts`。`scripts/apps.mjs` 仅从 extensions 类别自动发现这些 App；漏注册、版本不支持或入口不齐会使类型检查、构建和测试失败。没有 App 入口和注册字段的普通扩展不受影响；独立 skills、mcp-servers、hooks 不进入该发现流程。
 
 注册后的全部 App 自动进入 `npm test` 中的真实浏览器规范测试，单独运行使用 `npm run test:apps`；新增 App 不需要另改测试名单。`npm run pack:apps` 先执行同一检查，再生成交付包。测试和打包同时核对源码指纹及产物哈希，源码变化后必须重新构建，不能使用旧页面通过新源码的检查。
 
@@ -165,7 +165,7 @@ App 调用工具和读取资源时使用 SDK 的 `callServerTool`、`readServerR
 4. 文件或工作区操作使用原生当前解析出的工作目录和文件边界，不将助手 home 当作项目目录，也不改写会话继承字段来兜底。
 5. 每次敏感读取或写入前，以及异步准备完成后，重新核验请求、连接、会话和授权仍有效；关闭、切换、过期及迟到回包不能恢复旧权限。
 
-`plugins/univer/workspace-files.ts` 展示了文件能力的公开 SDK 接入。它不是所有 MCP App 都要复制的认证框架；普通 App 继续使用标准宿主即可。
+`plugins/extensions/univer/workspace-files.ts` 展示了文件能力的公开 SDK 接入。它不是所有 MCP App 都要复制的认证框架；普通 App 继续使用标准宿主即可。
 
 业务数据可以按产品设计跨会话保存，例如本仓库的用户文档库。文档存储范围与原生视图的交互授权要分别定义；不能把跨会话文档 ID 当成跨会话调用或文件写入的许可。
 
@@ -394,10 +394,10 @@ npm run pack:apps
 | `scripts/apps.mjs`                   | 仓库 App 注册发现、源码指纹与构建完整性检查 |
 | `tests/app-contract.test.mjs`         | 自动发现全部 App，以真实构建页面验证必需展示规范与反例拒绝 |
 | `shared/assets.ts`                    | 完整性核对、本机静态页面与内层 frame relay；端口约束见第 7 节          |
-| `plugins/univer/workspace-files.ts`   | 原生认证请求、会话与服务归属核对、文件授权和资源适配                   |
+| `plugins/extensions/univer/workspace-files.ts`   | 原生认证请求、会话与服务归属核对、文件授权和资源适配                   |
 | `tests/server.test.mjs`               | 真实 stdio 服务、元数据、资源及业务结果验证                            |
 | `tests/host.ts`、`tests/ui-smoke.mjs` | 独立 AppBridge 与真实浏览器验证                                        |
 
-能力说明以[当前插件列表](../plugins/README.md)及各插件文档为准。新增插件应只复用需要的能力，并完成[接入 checklist](mcp-app-checklist.md)中的必需项和所选功能项。
+能力说明以[Extensions 列表](../plugins/extensions/README.md)及各插件文档为准。新增扩展应只复用需要的能力，并完成[接入 checklist](mcp-app-checklist.md)中的必需项和所选功能项。
 
 本仓库现有文档 ID、revision 和标准 App 初始化可作为对应职责的参考，不表示已实现上述可选内容回执适配。新增能力只在实际实现、目标版本与验证结果一致后写入插件详细说明。

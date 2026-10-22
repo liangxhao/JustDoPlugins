@@ -1,32 +1,16 @@
-# 当前插件列表
+# 插件分类与列表
 
-每个插件都是独立 OpenClaw 原生扩展，附带 stdio MCP 服务及 MCP App。下表描述当前实现的范围，宿主内集成仍需在匹配版本中按开发文档验收。
+插件按独立安装与交付单元分为四类，源码和详细文档使用相同的类型与名称。
 
-| 插件                                 | 扩展 ID           | MCP 服务      | 版本  | 用途                           |
-| ------------------------------------ | ----------------- | ------------- | ----- | ------------------------------ |
-| [Univer](univer/README.md)           | `univer-app`      | `univer`      | 0.1.0 | 表格编辑、文件预览与源文件写回 |
-| [Perspective](perspective/README.md) | `perspective-app` | `perspective` | 0.1.0 | 数据透视、分组、筛选与图表     |
+| 类型 | 范围 | 源码（相对仓库根目录） | 当前实现 |
+| ---- | ---- | ---------------------- | -------- |
+| [extensions](extensions/README.md) | OpenClaw 原生扩展，可附带 MCP 服务、MCP App、Skill 或 Hook | `plugins/extensions/<name>/` | Univer、Perspective |
+| [skills](skills/README.md) | 独立分发的技能说明及配套资源 | `plugins/skills/<name>/` | 暂无 |
+| [mcp-servers](mcp-servers/README.md) | 独立配置与运行的 MCP 服务 | `plugins/mcp-servers/<name>/` | 暂无 |
+| [hooks](hooks/README.md) | 独立分发的事件钩子 | `plugins/hooks/<name>/` | 暂无 |
 
-## 能力对比
+当前两个插件通过原生扩展安装，因此归入 extensions；它们内含的 MCP 服务和 MCP App 仍属于各自扩展，不另算独立 MCP 服务。
 
-| 能力                           | Univer                      | Perspective                  |
-| ------------------------------ | --------------------------- | ---------------------------- |
-| 导入                           | XLSX、CSV、TSV、工作簿 JSON | CSV、JSON                    |
-| 导出                           | 多工作表 XLSX               | 当前分析视图 CSV             |
-| 编辑或分析                     | 单元格、公式、基础格式      | 透视、分组、筛选、聚合、图表 |
-| 工作区文件预览与源文件写回     | 支持，受资源能力和授权约束  | 未提供                       |
-| 本地文档与版本冲突检查         | 支持                        | 支持                         |
-| 单行共享标题栏                 | 支持，协商失败恢复独立布局   | 支持，协商失败恢复独立布局    |
-| 持久化文档上限                 | 8 MiB                       | 2 MiB                        |
+每类列表由 `docs/plugins/<type>/README.md` 维护，各插件详细说明统一位于 `docs/plugins/<type>/<name>/README.md`。新增插件时同步更新对应类型列表与[文档导航](../README.md)。
 
-具体容量、格式兼容性、MCP 工具和未支持能力见各插件详细文档，不能将上游产品的全部能力视为本扩展已经支持。
-
-## 源码与交付
-
-| 插件        | 源码（相对仓库根目录） | 生成的独立导入目录（相对仓库根目录） |
-| ----------- | ---------------------- | ------------------------------------ |
-| Univer      | `plugins/univer/`      | `dist/plugins/univer/`               |
-| Perspective | `plugins/perspective/` | `dist/plugins/perspective/`          |
-
-压缩包与 `SHA256SUMS` 位于 `dist/archives/`，版本来自插件包信息。
-安装方式见[安装与使用](../guides/install-and-use.md)，交付流程见[离线构建与交付](../development/offline-delivery.md)。
+交付产物按类型输出到 `dist/plugins/<type>/<name>/` 和 `dist/archives/<type>/`。当前构建、App 规范测试和打包流程覆盖 extensions 中的注册 App；其余类型尚未提供专用构建与打包流程。

@@ -12,10 +12,10 @@ import {
 } from '@univerjs/presets';
 import { CalculationMode } from '@univerjs/sheets-formula';
 
-import { createWorkbook, MAX_SPREADSHEET_BYTES } from '../../shared/contracts';
-import { MAX_FILE_BYTES } from '../../shared/file-contracts';
-import { csvDelimiter, parseCsv } from '../../shared/csv';
-import { mountApp } from '../../shared/ui';
+import { createWorkbook, MAX_SPREADSHEET_BYTES } from '../../../shared/contracts';
+import { MAX_FILE_BYTES } from '../../../shared/file-contracts';
+import { csvDelimiter, parseCsv } from '../../../shared/csv';
+import { mountApp } from '../../../shared/ui';
 import { exportXlsx, importXlsx } from './xlsx';
 import { writebackXlsx } from './xlsx-writeback';
 import { ViewStorage } from './view-storage';

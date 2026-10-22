@@ -1,5 +1,7 @@
 # 离线构建与交付
 
+本文覆盖 `plugins/extensions/` 中已注册 MCP App 的原生扩展。其他类型的独立插件尚未提供构建与打包流程，分类见[插件分类与列表](../plugins/README.md)。
+
 ## 准备条件
 
 准备机使用 Node 24.16.0 及以上的 24.x 版本。依赖精确版本、下载地址与完整性由根目录 `package-lock.json` 锁定。
@@ -30,14 +32,14 @@ App 列表由仓库注册自动发现；`npm test` 包含 App 规范检查，`np
 
 | 路径（相对仓库根目录） | 用途                                                     |
 | ---------------------- | -------------------------------------------------------- |
-| `plugins/<name>/dist/` | 单个插件的编译产物，包括静态页面、服务、完整性清单与许可 |
-| `dist/plugins/<name>/` | 干净的扩展交付目录，可直接导入                           |
-| `dist/archives/`       | 每个插件的 `.tgz` 压缩包与 `SHA256SUMS`                  |
+| `plugins/extensions/<name>/dist/` | 单个扩展的编译产物，包括静态页面、服务、完整性清单与许可 |
+| `dist/plugins/extensions/<name>/` | 干净的扩展交付目录，可直接导入                           |
+| `dist/archives/extensions/`       | 每个扩展的 `.tgz` 压缩包与 `SHA256SUMS`                  |
 
 当前压缩包为 `local-mcp-univer-app-0.1.0.tgz` 和 `local-mcp-perspective-app-0.1.0.tgz`。
 包名和版本取自各插件的 `package.json`，升级版本后文件名随之变化。
 
-每个交付目录包含包信息、原生清单、必要的扩展入口、完整 `dist/`，以及从 `docs/plugins/<name>/README.md` 复制的详细使用说明。
+每个交付目录包含包信息、原生清单、必要的扩展入口、完整 `dist/`，以及从 `docs/plugins/extensions/<name>/README.md` 复制的详细使用说明。
 JS、CSS、WASM 和字体内嵌于 `dist/app.html`；`dist/server.cjs` 是无 npm 运行依赖的 stdio 服务。
 `dist/licenses/` 和 `dist/THIRD_PARTY_NOTICES.json` 按实际打包依赖及其版本保留第三方许可。
 
@@ -46,7 +48,7 @@ JS、CSS、WASM 和字体内嵌于 `dist/app.html`；`dist/server.cjs` 是无 np
 
 ## 分发与安装
 
-使用[当前插件列表](../plugins/README.md)选择需要的扩展，将对应的交付目录或压缩包带入目标环境。
+使用[Extensions 列表](../plugins/extensions/README.md)选择需要的扩展，将对应的交付目录或压缩包带入目标环境。
 原生清单声明附带 MCP，由 OpenClaw 管理相对安装路径、服务启停和进程；分发时使用 `extension` 类型。
 安装后的使用方法见[安装与使用](../guides/install-and-use.md)。本仓库不提供自动上架 Provider。
 

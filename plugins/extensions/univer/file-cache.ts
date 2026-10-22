@@ -7,8 +7,8 @@ import {
   MAX_FILE_BYTES,
   OPEN_FILE_TOOL,
   STAGE_FILE_TOOL,
-} from '../../shared/file-contracts';
-import type { DomainTool } from '../../shared/server';
+} from '../../../shared/file-contracts';
+import type { DomainTool } from '../../../shared/server';
 
 const tokenSchema = z.string().regex(FILE_TOKEN_PATTERN);
 const MAX_CACHE_BYTES = 32 * 1024 * 1024;

@@ -16,7 +16,7 @@ import {
   FILE_RESOURCE_PREFIX,
   MAX_FILE_BYTES,
   STAGE_FILE_TOOL,
-} from '../../shared/file-contracts';
+} from '../../../shared/file-contracts';
 
 const PLUGIN_ID = 'univer-app';
 const SERVER = 'univer';

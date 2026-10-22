@@ -1,5 +1,7 @@
 # 架构与隔离边界
 
+仓库按 `plugins/<type>/<name>/` 管理 extensions、skills、mcp-servers、hooks 四类独立插件，详见[插件分类与列表](../plugins/README.md)。本文描述当前 `plugins/extensions/` 中两个扩展的架构。
+
 ## 扩展与 MCP App
 
 当前两个插件是独立的 OpenClaw 原生扩展，通过 `openclaw.plugin.json` 声明附带的 stdio MCP 服务。
@@ -46,8 +48,8 @@ OpenClaw 管理相对安装路径、服务启动与停止；卸载或停用扩�
 
 ## 插件特有接口
 
-Univer 的工作区文件授权、快照、备份、源文件写回与大小限制见 [Univer 详细文档](../plugins/univer/README.md)。
-Perspective 的数据与视图配置约定见 [Perspective 详细文档](../plugins/perspective/README.md)。
+Univer 的工作区文件授权、快照、备份、源文件写回与大小限制见 [Univer 详细文档](../plugins/extensions/univer/README.md)。
+Perspective 的数据与视图配置约定见 [Perspective 详细文档](../plugins/extensions/perspective/README.md)。
 这些能力不通过额外的 MCP 连接或特定宿主补丁实现。
 
 相关验证步骤见[测试与验收](testing.md)。

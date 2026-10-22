@@ -12,7 +12,10 @@ const dom = new JSDOM('');
 globalThis.DOMParser = dom.window.DOMParser;
 globalThis.XMLSerializer = dom.window.XMLSerializer;
 const compiled = await build({
-  entryPoints: ['plugins/univer/xlsx-writeback.ts', 'plugins/univer/xlsx.ts'],
+  entryPoints: [
+    'plugins/extensions/univer/xlsx-writeback.ts',
+    'plugins/extensions/univer/xlsx.ts',
+  ],
   bundle: true,
   platform: 'node',
   format: 'cjs',

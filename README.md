@@ -1,15 +1,17 @@
-# OpenClaw Extensions
+# OpenClaw Plugins
 
-面向 OpenClaw 独立开发和分发的原生扩展集合，同时支持普通插件和按需附带 MCP App 的插件。各插件可独立安装、启停与交付；源码、依赖和交付包由本仓库统一管理。
+面向 OpenClaw 的插件仓库，按 `extensions`、`skills`、`mcp-servers`、`hooks` 四类管理源码、依赖、文档和交付产物。
 
-## 当前插件
+## 插件分类
 
-| 插件        | 主要用途                         | 详细文档                                          |
-| ----------- | -------------------------------- | ------------------------------------------------- |
-| Univer      | 离线表格编辑、文件预览与导入导出 | [Univer](docs/plugins/univer/README.md)           |
-| Perspective | 离线数据透视、分组筛选与图表     | [Perspective](docs/plugins/perspective/README.md) |
+| 类型 | 源码目录 | 文档入口 |
+| ---- | -------- | -------- |
+| extensions | `plugins/extensions/` | [原生扩展](docs/plugins/extensions/README.md) |
+| skills | `plugins/skills/` | [技能](docs/plugins/skills/README.md) |
+| mcp-servers | `plugins/mcp-servers/` | [独立 MCP 服务](docs/plugins/mcp-servers/README.md) |
+| hooks | `plugins/hooks/` | [事件钩子](docs/plugins/hooks/README.md) |
 
-完整清单与能力对比见[当前插件列表](docs/plugins/README.md)。
+当前实现均属于 extensions，其余三类预留目录。分类依据为独立安装与交付单元；扩展附带的 MCP 服务和 MCP App 随扩展维护。完整清单见[插件分类与列表](docs/plugins/README.md)。
 
 ## 文档入口
 
@@ -23,7 +25,7 @@
 
 | 目录       | 用途                                       |
 | ---------- | ------------------------------------------ |
-| `plugins/` | 各插件的源码、包信息与原生清单             |
+| `plugins/` | 按类型组织的插件源码与元数据               |
 | `shared/`  | 共用协议、服务与界面实现                   |
 | `scripts/` | 检查、构建与打包                           |
 | `tests/`   | 自动测试与浏览器验证                       |

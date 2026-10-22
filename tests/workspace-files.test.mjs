@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import { build } from 'esbuild';
 
 const built = await build({
-  entryPoints: ['plugins/univer/workspace-files.ts'],
+  entryPoints: ['plugins/extensions/univer/workspace-files.ts'],
   bundle: true,
   write: false,
   platform: 'node',

@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { build } from 'esbuild';
 
 const built = await build({
-  entryPoints: ['plugins/univer/file-cache.ts'],
+  entryPoints: ['plugins/extensions/univer/file-cache.ts'],
   bundle: true,
   write: false,
   platform: 'node',

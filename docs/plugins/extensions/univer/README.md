@@ -7,7 +7,7 @@ XLSX 转换由随包提供的 ExcelJS 4.4.0 完成，不连接在线转换服务
 
 ## 安装与打开
 
-安装 Univer 的完整交付目录或对应 `.tgz` 文件，完成扩展审查并启用。仓库生成的独立导入目录为 `dist/plugins/univer/`。
+安装 Univer 的完整交付目录或对应 `.tgz` 文件，完成扩展审查并启用。仓库生成的独立导入目录为 `dist/plugins/extensions/univer/`，压缩包位于 `dist/archives/extensions/`。
 包内包含原生清单、扩展入口、说明和完整 `dist/`，运行使用宿主的 Node 24，无需安装 npm 依赖或联网。
 
 启用后附带的 MCP 服务由 OpenClaw 管理，可通过手动应用入口或模型工具打开。

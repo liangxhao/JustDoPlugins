@@ -8,15 +8,15 @@ import { fileURLToPath } from 'node:url';
 import { assertFreshAppBuild, discoverApps } from './apps.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const output = join(root, 'dist', 'archives');
-const extensions = join(root, 'dist', 'plugins');
+const output = join(root, 'dist', 'archives', 'extensions');
+const extensions = join(root, 'dist', 'plugins', 'extensions');
 if (!process.env.npm_execpath) throw new Error('Run npm run pack:apps.');
 await mkdir(extensions, { recursive: true });
 await mkdir(output, { recursive: true });
 const checksums = [];
 for (const name of await discoverApps()) {
   await assertFreshAppBuild(name);
-  const source = join(root, 'plugins', name);
+  const source = join(root, 'plugins', 'extensions', name);
   const manifest = JSON.parse(await readFile(join(source, 'package.json'), 'utf8'));
   // Publish a self-contained directory, with no workspace links or build dependencies.
   const target = resolve(extensions, name);
@@ -24,7 +24,10 @@ for (const name of await discoverApps()) {
   await rm(target, { recursive: true, force: true });
   await mkdir(target);
   await cp(join(source, 'dist'), join(target, 'dist'), { recursive: true });
-  await copyFile(join(root, 'docs', 'plugins', name, 'README.md'), join(target, 'README.md'));
+  await copyFile(
+    join(root, 'docs', 'plugins', 'extensions', name, 'README.md'),
+    join(target, 'README.md'),
+  );
   for (const file of [
     'openclaw.plugin.json',
     ...(manifest.openclaw?.extensions ?? [])

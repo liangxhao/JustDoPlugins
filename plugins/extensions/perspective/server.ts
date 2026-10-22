@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
-import { rowsSchema, titleSchema } from '../../shared/contracts';
-import { startServer } from '../../shared/server';
+import { rowsSchema, titleSchema } from '../../../shared/contracts';
+import { startServer } from '../../../shared/server';
 
 startServer('perspective', 'Perspective', () => ({ rows: [], config: {} }), [
   {
