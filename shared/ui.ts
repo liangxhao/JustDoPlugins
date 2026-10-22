@@ -1,9 +1,10 @@
 import './ui.css';
 
-import { App } from '@modelcontextprotocol/ext-apps';
+import type { App } from '@modelcontextprotocol/ext-apps';
 import { z } from 'zod';
 
 import type { AppDocument } from './contracts';
+import { applySharedHeader, createApp } from './app-presentation';
 import {
   FILE_DEEP_LINK_PREFIX,
   FILE_RESOURCE_PREFIX,
@@ -49,6 +50,8 @@ const strings = {
     saveUnknown: '保存结果未确认，请核对文件后重新打开',
     importSpreadsheet: '导入表格',
     exportSpreadsheet: '导出 XLSX',
+    rename: '重命名',
+    confirm: '确定',
   },
   en: {
     library: 'Documents',
@@ -72,6 +75,8 @@ const strings = {
     saveUnknown: 'Save result is unknown. Check the file and reopen it.',
     importSpreadsheet: 'Import spreadsheet',
     exportSpreadsheet: 'Export XLSX',
+    rename: 'Rename',
+    confirm: 'OK',
   },
 };
 const icons: Record<string, string> = {
@@ -80,6 +85,7 @@ const icons: Record<string, string> = {
   import: '<path d="M8 2v8m-3-3 3 3 3-3M2 11v3h12v-3"/>',
   export: '<path d="M8 10V2M5 5l3-3 3 3M2 10v4h12v-4"/>',
   reload: '<path d="M13 6A5 5 0 1 0 13 10M13 2v4H9"/>',
+  rename: '<path d="m3 10 7-7 3 3-7 7H3zM9 4l3 3"/>',
 };
 export function mountApp(
   label: string,
@@ -101,14 +107,19 @@ export function mountApp(
   let sourceBytes: Uint8Array | undefined;
   let sourceData: Record<string, unknown> | undefined;
   let saveUncertain = false;
-  const app = new App({ name: `${label} Offline`, version: '0.1.0' }, {});
+  const app = createApp({ name: `${label} Offline`, version: '0.1.0' });
   const t = (key: keyof typeof strings.zh) => strings[locale][key];
-  document.body.innerHTML = `<header><button data-action="library"></button><input class="title" maxlength="120" aria-label="Title"/><span id="status" role="status"></span><button data-action="new"></button><button data-action="import"></button><button data-action="export"></button><button data-action="reload"></button><button class="primary" data-action="save"></button></header><main id="editor" hidden></main><main id="library"></main><input type="file" id="file" accept=".csv,.tsv,.json"/>`;
+  document.body.innerHTML = `<header data-app-toolbar><div class="toolbar-row"><button data-action="library"></button><input data-app-title class="title" maxlength="120" aria-label="Title"/><span id="status" role="status"></span><span class="toolbar-actions"><button data-action="rename"></button><button data-action="new"></button><button data-action="import"></button><button data-action="export"></button><button data-action="reload"></button><button class="primary" data-action="save"></button></span></div></header><div data-app-content><main id="editor" hidden></main><main id="library"></main></div><input type="file" id="file" accept=".csv,.tsv,.json"/>`;
   const container = document.querySelector<HTMLElement>('#editor')!;
   const library = document.querySelector<HTMLElement>('#library')!;
   const title = document.querySelector<HTMLInputElement>('.title')!;
   const status = document.querySelector<HTMLElement>('#status')!;
   const file = document.querySelector<HTMLInputElement>('#file')!;
+  document.querySelector('.toolbar-actions')!.addEventListener('focusin', event => {
+    if (document.documentElement.hasAttribute('data-shared-header')) {
+      (event.target as HTMLElement).scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+  });
   file.accept = options.accept ?? file.accept;
   function labels() {
     for (const button of document.querySelectorAll<HTMLButtonElement>('button[data-action]')) {
@@ -121,7 +132,8 @@ export function mountApp(
             : t(action);
       button.title = caption;
       button.hidden =
-        action === 'save' && Boolean(current?.sourceFile && !current.sourceFile.writable);
+        (action === 'save' && Boolean(current?.sourceFile && !current.sourceFile.writable)) ||
+        (action === 'rename' && (!current || title.readOnly));
       button.setAttribute('aria-label', caption);
       button.innerHTML = icons[action]
         ? `<svg viewBox="0 0 16 16">${icons[action]}</svg>`
@@ -147,6 +159,42 @@ export function mountApp(
     notice(t('dirty'));
   }
   title.addEventListener('input', changed);
+  function rename() {
+    if (!current || title.readOnly || title.disabled) return;
+    const original = current;
+    const originalTitle = title.value;
+    const dialog = document.createElement('dialog');
+    const input = document.createElement('input');
+    input.value = title.value;
+    input.maxLength = 120;
+    input.setAttribute('aria-label', t('rename'));
+    const actions = document.createElement('footer');
+    for (const accepted of [false, true]) {
+      const button = document.createElement('button');
+      button.textContent = t(accepted ? 'confirm' : 'cancel');
+      button.onclick = () => {
+        if (
+          accepted &&
+          current === original &&
+          title.value === originalTitle &&
+          !title.readOnly &&
+          !title.disabled
+        ) {
+          title.value = input.value;
+          changed();
+        }
+        dialog.close();
+        dialog.remove();
+      };
+      actions.append(button);
+    }
+    dialog.oncancel = () => dialog.remove();
+    dialog.append(input, actions);
+    document.body.append(dialog);
+    dialog.showModal();
+    input.focus();
+    input.select();
+  }
   const canLeave = async () => {
     await editor?.commitEdit?.();
     if (!dirty) return true;
@@ -322,6 +370,7 @@ export function mountApp(
     current = undefined;
     dirty = false;
     notice('');
+    labels();
   }
   async function run(operation: () => Promise<void>) {
     if (busy) return;
@@ -345,6 +394,10 @@ export function mountApp(
   document.querySelector('header')!.addEventListener('click', event => {
     const action = (event.target as HTMLElement).closest<HTMLElement>('button')?.dataset.action;
     if (!action) return;
+    if (action === 'rename') {
+      rename();
+      return;
+    }
     if (action === 'import') {
       void run(async () => {
         if (await canLeave()) file.click();
@@ -487,6 +540,7 @@ export function mountApp(
     });
   };
   const applyContext = () => {
+    applySharedHeader(app);
     const ctx = app.getHostContext();
     locale = ctx?.locale?.startsWith('zh') ? 'zh' : 'en';
     const theme = ctx?.theme ?? 'light';

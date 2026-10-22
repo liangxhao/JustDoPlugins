@@ -7,7 +7,7 @@
 
 类型检查需要 OpenClaw 2026.10.4 的公开 SDK 声明。默认读取 `node_modules/openclaw/dist/plugin-sdk`；
 如果 SDK 在其他位置，在执行命令前设置 `OPENCLAW_SDK_ROOT` 指向实际的 `dist/plugin-sdk` 目录。
-脚本不会自动下载 OpenClaw。浏览器验证需要准备机已安装 Chrome。
+脚本不会自动下载 OpenClaw。App 规范测试、界面验证及打包前检查均需要准备机已安装 Chrome，不会在测试时下载或因缺失而跳过。
 
 ## 构建流程
 
@@ -24,6 +24,7 @@ npm run pack:apps
 
 首次准备依赖需要可访问所配置的 registry，或者已有完整的 npm 缓存；离线运行不等于准备机首次安装依赖也无需下载。
 构建和运行均不依赖宿主源码。
+App 列表由仓库注册自动发现；`npm test` 包含 App 规范检查，`npm run pack:apps` 打包前再次执行该检查。源码指纹或产物哈希不匹配时须重新构建，不能交付旧产物。
 
 ## 产物目录
 
@@ -40,7 +41,7 @@ npm run pack:apps
 JS、CSS、WASM 和字体内嵌于 `dist/app.html`；`dist/server.cjs` 是无 npm 运行依赖的 stdio 服务。
 `dist/licenses/` 和 `dist/THIRD_PARTY_NOTICES.json` 按实际打包依赖及其版本保留第三方许可。
 
-交付包不含开发依赖、公共源码或测试，复制到另一台机器后仍可独立导入。
+交付包不含开发依赖、公共源码、测试或仓库专用的 `mcpApp` 注册字段，复制到另一台机器后仍可独立导入。
 运行使用宿主提供的 Node 24，不使用 `npx`、不访问 registry、不执行安装脚本或首次启动资源下载。
 
 ## 分发与安装

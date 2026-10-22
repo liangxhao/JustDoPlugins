@@ -3,6 +3,10 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 
+import { discoverApps } from './apps.mjs';
+
+await discoverApps();
+
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const candidates = process.env.OPENCLAW_SDK_ROOT
   ? [resolve(process.env.OPENCLAW_SDK_ROOT)]

@@ -24,6 +24,7 @@
 - 新增插件或变更能力时，同步更新文档导航、插件列表和受影响的详细说明。
 - 开发指导只记录插件能力、公开协议和必要的集成约束；宿主菜单、侧栏布局、Tab 路由、窗口实现与内部验收由宿主工程维护，不写成插件职责。
 - 涉及 MCP App 时，先读 [MCP App 开发与宿主接入](docs/development/mcp-app-development.md)，按 [接入 checklist](docs/development/mcp-app-checklist.md) 验证必需项和所选能力；普通插件无需实现 App 界面或入口。
+- 本仓库 App 在插件 `package.json` 注册 `mcpApp.contractVersion: 1`，必须实现 `ui/shared-header` v1 并通过自动发现的真实界面规范测试；只有声明没有行为不能通过。普通插件不受此要求影响；这不是 MCP 标准的全局强制项。
 
 ## 验证
 

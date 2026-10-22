@@ -474,6 +474,59 @@ try {
       await page.screenshot({
         path: join(reports, 'screenshots', `${name}-narrow-error.png`),
       });
+      await page.setViewportSize({ width: 900, height: 790 });
+      await editor.locator('#editor').evaluate(element => {
+        globalThis.originalEditor = element.firstElementChild;
+      });
+      const calls = await page.evaluate(() => globalThis.businessCalls);
+      const toolbar = editor.locator('[data-app-toolbar]');
+      const status = toolbar.locator('#status');
+      const errorText = await status.textContent();
+      for (let attempt = 0; attempt < 2; attempt++) {
+        await page.evaluate(() =>
+          globalThis.bridge.setHostContext({
+            'ui/shared-header': { height: 44, left: 180, right: 96 },
+          }),
+        );
+        await editor.locator('html[data-shared-header]').waitFor();
+      }
+      assert.equal(await editor.locator('.title').isVisible(), false);
+      assert.equal(await toolbar.evaluate(el => el.offsetHeight), 44);
+      assert.equal(await status.isVisible(), true);
+      assert.equal(await status.textContent(), errorText);
+      await editor
+        .locator('[data-app-toolbar]')
+        .getByRole('button', { name: '重命名', exact: true })
+        .click();
+      await editor.getByRole('dialog').getByRole('textbox').fill('取消的重命名');
+      await editor.getByRole('dialog').getByRole('button', { name: '取消', exact: true }).click();
+      assert.equal(await editor.locator('.title').inputValue(), '导入验证');
+      await editor
+        .locator('[data-app-toolbar]')
+        .getByRole('button', { name: '重命名', exact: true })
+        .click();
+      await editor.getByRole('dialog').getByRole('textbox').fill('共享标题栏验证');
+      await editor.getByRole('dialog').getByRole('button', { name: '确定', exact: true }).click();
+      assert.equal(await editor.locator('.title').inputValue(), '共享标题栏验证');
+      assert.equal(await status.textContent(), '未保存');
+      assert.equal(await page.evaluate(() => globalThis.businessCalls), calls);
+      await editor.getByRole('button', { name: '保存', exact: true }).click();
+      await status.filter({ hasText: '已保存' }).waitFor();
+      const library = await client.callTool({ name: 'list_documents', arguments: {} });
+      assert.ok(library.structuredContent.documents.some(item => item.title === '共享标题栏验证'));
+      await page.screenshot({
+        path: join(reports, 'screenshots', `${name}-shared-header.png`),
+      });
+      await page.evaluate(() => globalThis.bridge.setHostContext({ 'ui/shared-header': null }));
+      await editor.locator('html:not([data-shared-header])').waitFor();
+      assert.equal(await editor.locator('.title').isVisible(), true);
+      assert.equal(await editor.locator('.title').inputValue(), '共享标题栏验证');
+      assert.ok(
+        await editor
+          .locator('#editor')
+          .evaluate(el => el.firstElementChild === globalThis.originalEditor),
+        'Shared header transitions must preserve the live editor instance',
+      );
       assert.deepEqual(errors, []);
       await writeFile(
         join(reports, `${name}-ui-proof.json`),

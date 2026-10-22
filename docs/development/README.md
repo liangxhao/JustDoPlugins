@@ -51,8 +51,10 @@ npm run pack:apps
 测试和打包需要先构建；修改源码后应重新构建再验证。
 离线依赖准备和 SDK 设置见 [离线准备](offline-delivery.md)。
 
-新增插件时，在 `plugins/<name>/` 中添加包信息、清单、入口与说明，
-然后更新 `scripts/build.mjs`、`scripts/pack.mjs` 的插件名单及相关测试。
+新增插件时，在 `plugins/<name>/` 中添加包信息、清单、入口与说明。
+带有 `app.ts` 的插件必须在包信息中注册 `mcpApp.contractVersion: 1`，实现本仓库的共享标题栏规范。
+构建、App 规范测试和打包自动发现全部注册 App，无需另增插件名单；漏注册会报错。
+`npm test` 包含该规范测试，也可运行 `npm run test:apps` 单独排查。业务专有能力仍需增加相应测试。
 只有确实被多个插件使用的实现才放入 `shared/`。
 
 日常开发在 `dev` 分支进行，

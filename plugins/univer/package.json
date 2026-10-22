@@ -1,6 +1,9 @@
 {
   "name": "@local-mcp/univer-app",
   "version": "0.1.0",
+  "mcpApp": {
+    "contractVersion": 1
+  },
   "description": "Offline spreadsheet editor with an MCP Apps interface",
   "type": "module",
   "license": "Apache-2.0",

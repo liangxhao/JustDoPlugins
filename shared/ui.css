@@ -40,6 +40,29 @@ body > header {
   padding: 6px 10px;
   border-bottom: 1px solid var(--line);
 }
+.toolbar-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+}
+.toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+body > header button[data-action='rename'] {
+  display: none;
+}
+[data-app-content] {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
 input.title {
   min-width: 80px;
   flex: 1;
@@ -114,9 +137,12 @@ body > header svg {
   max-width: 100%;
   padding: 0 6px 2px;
 }
-body > header:has(#status.error) {
+:root:not([data-shared-header]) body > header:has(#status.error) {
   height: auto;
   min-height: 46px;
+  flex-wrap: wrap;
+}
+:root:not([data-shared-header]) .toolbar-row:has(#status.error) {
   flex-wrap: wrap;
 }
 #editor {
@@ -211,10 +237,48 @@ dialog button {
     gap: 2px;
     padding: 6px;
   }
+  .toolbar-row,
+  .toolbar-actions {
+    gap: 2px;
+  }
   body > header button {
     padding: 0 6px;
   }
   .title {
     width: 80px;
   }
+}
+:root[data-shared-header] body > header {
+  height: var(--app-header-height);
+  min-height: var(--app-header-height);
+  padding: 4px var(--app-header-right) 4px var(--app-header-left);
+  flex-wrap: nowrap;
+}
+:root[data-shared-header] .toolbar-row {
+  flex-wrap: nowrap;
+  height: 100%;
+  gap: 4px;
+}
+:root[data-shared-header] [data-app-title] {
+  display: none;
+}
+:root[data-shared-header] .toolbar-actions {
+  flex: 1;
+  min-width: 32px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+:root[data-shared-header] body > header button {
+  flex-shrink: 0;
+  height: min(32px, calc(var(--app-header-height) - 10px));
+}
+:root[data-shared-header] body > header button[data-action='rename']:not([hidden]) {
+  display: inline-flex;
+}
+:root[data-shared-header] #status {
+  display: block;
+  order: 0;
+  flex: 0 1 auto;
+  max-width: 45%;
+  padding: 0;
 }

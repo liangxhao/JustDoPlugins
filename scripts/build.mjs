@@ -1,15 +1,19 @@
 import { createHash } from 'node:crypto';
+import { existsSync } from 'node:fs';
 import { readFile, mkdir, writeFile, readdir, copyFile, rm } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { build } from 'esbuild';
 
+import { discoverApps, sourceFingerprint } from './apps.mjs';
+
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(import.meta.url);
 const requested = process.argv[2];
-for (const name of requested ? [requested] : ['univer', 'perspective']) {
-  if (!['univer', 'perspective'].includes(name)) throw new Error('Unknown app.');
+const apps = await discoverApps();
+for (const name of requested ? [requested] : apps) {
+  if (!apps.includes(name)) throw new Error('Unknown registered app.');
   const output = join(root, 'plugins', name, 'dist');
   await mkdir(output, { recursive: true });
   const browser = await build({
@@ -55,10 +59,10 @@ for (const name of requested ? [requested] : ['univer', 'perspective']) {
     banner: { js: '#!/usr/bin/env node' },
     metafile: true,
   });
-  if (name === 'univer') {
+  if (existsSync(join(root, 'plugins', name, 'extension.ts'))) {
     await build({
       absWorkingDir: root,
-      entryPoints: ['plugins/univer/extension.ts'],
+      entryPoints: [`plugins/${name}/extension.ts`],
       outfile: join(output, 'extension.cjs'),
       bundle: true,
       format: 'cjs',
@@ -110,12 +114,28 @@ for (const name of requested ? [requested] : ['univer', 'perspective']) {
     // Univer and Perspective both use Apache-2.0; require the full text at build time.
     await copyFile(join(root, 'node_modules/@univerjs/core/LICENSE'), join(output, 'LICENSE'));
   });
+  const sourceFiles = [
+    ...new Set(
+      [
+        ...Object.keys(browser.metafile.inputs),
+        ...Object.keys(server.metafile.inputs),
+        `plugins/${name}/package.json`,
+        `plugins/${name}/openclaw.plugin.json`,
+        'scripts/build.mjs',
+        'scripts/apps.mjs',
+        'package.json',
+        'package-lock.json',
+      ].filter(file => !file.replaceAll('\\', '/').includes('node_modules/')),
+    ),
+  ].sort();
   await writeFile(
     join(output, 'integrity.json'),
     JSON.stringify(
       {
         app: name,
         version: '0.1.0',
+        sourceFiles,
+        sourceHash: await sourceFingerprint(sourceFiles),
         assets: Object.fromEntries(
           await Promise.all(
             ['app.html', 'server.cjs'].map(async file => [

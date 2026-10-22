@@ -16,7 +16,7 @@
 | 文档                                                         | 内容                                                 |
 | ------------------------------------------------------------ | ---------------------------------------------------- |
 | [开发指南](development/README.md)                            | 环境、SDK、目录职责、开发命令、分支和新增插件        |
-| [MCP App 开发与宿主接入](development/mcp-app-development.md) | 必需与可选能力、身份来源、界面协议、稳定回执和恢复   |
+| [MCP App 开发与宿主接入](development/mcp-app-development.md) | 必需与可选能力、身份来源、共享标题栏、稳定回执和恢复 |
 | [MCP App 接入 checklist](development/mcp-app-checklist.md)   | 必需项、按需功能及真实宿主交付验收                   |
 | [架构与隔离边界](development/architecture.md)                | 扩展与 MCP App、存储、并发和离线资源                 |
 | [测试与验收](development/testing.md)                         | 自动测试、历史投影、权限和插件状态保留验收     |

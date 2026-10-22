@@ -2,8 +2,10 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { cp, copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import { assertFreshAppBuild, discoverApps } from './apps.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const output = join(root, 'dist', 'archives');
@@ -12,19 +14,10 @@ if (!process.env.npm_execpath) throw new Error('Run npm run pack:apps.');
 await mkdir(extensions, { recursive: true });
 await mkdir(output, { recursive: true });
 const checksums = [];
-for (const name of ['univer', 'perspective']) {
+for (const name of await discoverApps()) {
+  await assertFreshAppBuild(name);
   const source = join(root, 'plugins', name);
   const manifest = JSON.parse(await readFile(join(source, 'package.json'), 'utf8'));
-  const integrity = JSON.parse(await readFile(join(source, 'dist/integrity.json'), 'utf8'));
-  for (const file of ['server.cjs', 'app.html']) {
-    assert.equal(
-      createHash('sha256')
-        .update(await readFile(join(source, 'dist', file)))
-        .digest('hex'),
-      integrity.assets[file],
-      'Build complete assets before packaging.',
-    );
-  }
   // Publish a self-contained directory, with no workspace links or build dependencies.
   const target = resolve(extensions, name);
   assert.equal(dirname(target), extensions);
@@ -32,10 +25,25 @@ for (const name of ['univer', 'perspective']) {
   await mkdir(target);
   await cp(join(source, 'dist'), join(target, 'dist'), { recursive: true });
   await copyFile(join(root, 'docs', 'plugins', name, 'README.md'), join(target, 'README.md'));
-  for (const file of ['openclaw.plugin.json', ...(name === 'perspective' ? ['extension.cjs'] : [])])
-    await copyFile(join(source, file), join(target, file));
+  for (const file of [
+    'openclaw.plugin.json',
+    ...(manifest.openclaw?.extensions ?? [])
+      .map(file => file.replace(/^\.\//, ''))
+      .filter(file => !file.startsWith('dist/')),
+  ]) {
+    const from = resolve(source, file);
+    const to = resolve(target, file);
+    assert.ok(
+      !isAbsolute(file) && from.startsWith(source + sep) && to.startsWith(target + sep),
+      'Extension entry must remain inside its plugin directory.',
+    );
+    await mkdir(dirname(to), { recursive: true });
+    await copyFile(from, to);
+  }
   const runtimeManifest = Object.fromEntries(
-    Object.entries(manifest).filter(([key]) => !['devDependencies', 'scripts'].includes(key)),
+    Object.entries(manifest).filter(
+      ([key]) => !['devDependencies', 'scripts', 'mcpApp'].includes(key),
+    ),
   );
   await writeFile(join(target, 'package.json'), JSON.stringify(runtimeManifest, null, 2) + '\n');
   const result = spawnSync(
