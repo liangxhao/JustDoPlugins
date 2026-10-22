@@ -1,9 +1,19 @@
 import { z } from 'zod';
+import { analysisSchema, validateAnalysisConfig } from './analysis';
 
 export const MAX_DOCUMENT_BYTES = 2 * 1024 * 1024;
 export const MAX_SPREADSHEET_BYTES = 8 * 1024 * 1024;
 export const MAX_ROWS = 5000;
 export const MAX_COLUMNS = 100;
+export const MAX_QUERY_BYTES = 256 * 1024;
+export function boundedQueryResult<T extends Record<string, unknown>>(
+  value: T,
+  hint = 'Request fewer rows or columns.',
+): T {
+  if (new TextEncoder().encode(JSON.stringify(value)).byteLength > MAX_QUERY_BYTES)
+    throw new Error(`Query result exceeds 256 KiB. ${hint}`);
+  return value;
+}
 export const scalar = z.union([z.string().max(32768), z.number().finite(), z.boolean(), z.null()]);
 export const titleSchema = z.string().trim().min(1).max(120);
 export const idSchema = z.string().uuid();
@@ -25,16 +35,23 @@ export interface AppDocument {
 export function validateData(kind: Kind, data: unknown): Record<string, unknown> {
   const record = z.record(z.string(), z.unknown()).parse(data);
   const maxBytes = kind === 'univer' ? MAX_SPREADSHEET_BYTES : MAX_DOCUMENT_BYTES;
-  if (Buffer.byteLength(JSON.stringify(record)) > maxBytes)
+  if (new TextEncoder().encode(JSON.stringify(record)).byteLength > maxBytes)
     throw new Error(
       `Document exceeds ${maxBytes / 1024 / 1024} MiB. Split it into smaller documents.`,
     );
   if (kind === 'perspective') {
     const rows = rowsSchema.parse(record.rows);
-    if (new Set(rows.flatMap(row => Object.keys(row))).size > MAX_COLUMNS)
-      throw new Error('At most 100 columns are supported.');
-    z.record(z.string(), z.unknown()).parse(record.config ?? {});
-    return { rows, config: record.config ?? {} };
+    const schema = analysisSchema(rows, record.schema);
+    const normalized = {
+      rows,
+      schema,
+      config: validateAnalysisConfig(record.config, rows, schema),
+    };
+    if (new TextEncoder().encode(JSON.stringify(normalized)).byteLength > maxBytes)
+      throw new Error(
+        `Document exceeds ${maxBytes / 1024 / 1024} MiB after normalization. Split it into smaller documents.`,
+      );
+    return normalized;
   }
   const workbook = z
     .object({
@@ -44,7 +61,17 @@ export function validateData(kind: Kind, data: unknown): Record<string, unknown>
     })
     .passthrough()
     .parse(record.workbook);
+  if (
+    new Set(workbook.sheetOrder).size !== workbook.sheetOrder.length ||
+    Object.keys(workbook.sheets).length !== workbook.sheetOrder.length
+  )
+    throw new Error('Worksheet IDs must be unique and match sheetOrder.');
   for (const id of workbook.sheetOrder) {
+    if (
+      !Object.hasOwn(workbook.sheets, id) ||
+      ['__proto__', 'constructor', 'prototype'].includes(id)
+    )
+      throw new Error('Invalid worksheet ID.');
     const sheet = workbook.sheets[id];
     if (!sheet) throw new Error('Missing worksheet.');
     z.number()
@@ -59,9 +86,12 @@ export function validateData(kind: Kind, data: unknown): Record<string, unknown>
     for (const [row, cells] of Object.entries(cellData)) {
       if (!/^\d+$/.test(row) || Number(row) >= Number(sheet.rowCount))
         throw new Error('Cell row is outside worksheet bounds.');
-      for (const column of Object.keys(cells)) {
+      for (const [column, value] of Object.entries(cells)) {
         if (!/^\d+$/.test(column) || Number(column) >= Number(sheet.columnCount))
           throw new Error('Cell column is outside worksheet bounds.');
+        z.object({ v: scalar.optional(), f: z.string().max(8192).nullable().optional() })
+          .passthrough()
+          .parse(value);
       }
     }
   }

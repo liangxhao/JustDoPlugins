@@ -347,7 +347,7 @@ const app = new App(
 
 使用现有构建流程将 JS、CSS、WASM、Worker、字体及许可材料打入交付包。原生 UI HTML 有容量限制，大编辑器可由小型 UI wrapper 引用受限的本机资源；不要把完整编辑器塞进工具结果或聊天上下文。当前两个插件通过 `shared/assets.ts` 提供本机静态页面。
 
-若需要 loopback 服务，只监听 `127.0.0.1`，限制 Host、精确路径和请求方法，不提供任意文件、配置读取或代理。发布 URL 和 CSP 前检查端口是否被 Chromium/WHATWG 禁止，例如 `6000`；操作系统分配成功不保证浏览器能访问。静态监听端口可以有界重新分配，不能为此重放业务工具。当前 `shared/assets.ts` 使用随机端口，尚未实现禁用端口筛选，复用它时需单独补齐并验证这一条件。
+若需要 loopback 服务，只监听 `127.0.0.1`，限制 Host、精确路径和请求方法，不提供任意文件、配置读取或代理。发布 URL 和 CSP 前检查端口是否被 Chromium/WHATWG 禁止，例如 `6000`；操作系统分配成功不保证浏览器能访问。`shared/assets.ts` 通过 `shared/loopback.ts` 筛选随机端口，被禁止时先关闭再重新分配，最多 32 次；不会为此重放业务工具。
 
 资源 `_meta.ui.csp` 仅放行实际需要的本机资源、frame 和连接来源。使用标准 AppBridge 保持宿主来源检查；自建内层 iframe relay 时核对确切 WindowProxy 和消息格式。opaque sandbox 必需的通配 target 只适用于已绑定的父子窗口，不能放宽为接受任意窗口消息。不要通过关闭沙箱或扩大公网 CSP 修复白屏。
 
@@ -391,6 +391,7 @@ npm run pack:apps
 | `shared/server.ts`                    | MCP 工具 schema、global/file 元数据、UI resource、结构化结果和失败处理 |
 | `shared/ui.ts`                        | 标准 App 初始化、工具结果、资源读取、下载及可选上下文摘要              |
 | `shared/app-presentation.ts`          | 共享标题栏能力合并、尺寸校验与独立布局恢复 |
+| `shared/live-app.ts`                 | 标准 App snapshot/query/apply、发送前准备、内容戳及重复操作拒绝 |
 | `scripts/apps.mjs`                   | 仓库 App 注册发现、源码指纹与构建完整性检查 |
 | `tests/app-contract.test.mjs`         | 自动发现全部 App，以真实构建页面验证必需展示规范与反例拒绝 |
 | `shared/assets.ts`                    | 完整性核对、本机静态页面与内层 frame relay；端口约束见第 7 节          |
@@ -400,4 +401,4 @@ npm run pack:apps
 
 能力说明以[Extensions 列表](../plugins/extensions/README.md)及各插件文档为准。新增扩展应只复用需要的能力，并完成[接入 checklist](mcp-app-checklist.md)中的必需项和所选功能项。
 
-本仓库现有文档 ID、revision 和标准 App 初始化可作为对应职责的参考，不表示已实现上述可选内容回执适配。新增能力只在实际实现、目标版本与验证结果一致后写入插件详细说明。
+本仓库现有文档 ID、revision、当前实例 App 工具和标准初始化可作为对应职责的参考，不表示已实现上述可选历史内容回执适配。当前接口及恢复边界见[能力审查与接口约定](app-capabilities.md)。新增能力只在实际实现、目标版本与验证结果一致后写入插件详细说明。

@@ -19,10 +19,35 @@ import { mountApp } from '../../../shared/ui';
 import { exportXlsx, importXlsx } from './xlsx';
 import { writebackXlsx } from './xlsx-writeback';
 import { ViewStorage } from './view-storage';
+import {
+  spreadsheetApplySchema,
+  readRangeSchema,
+  readRange,
+  worksheet,
+  editValues,
+} from '../../../shared/spreadsheet';
+
+async function importSpreadsheetFile(file: File) {
+  if (file.name.toLowerCase().endsWith('.xlsx'))
+    return { workbook: await importXlsx(new Uint8Array(await file.arrayBuffer()), file.name) };
+  if (!/\.(csv|tsv|json)$/i.test(file.name))
+    throw new Error('Supported formats: XLSX, CSV, TSV, JSON.');
+  const text = new TextDecoder('utf-8', { fatal: true }).decode(await file.arrayBuffer());
+  if (file.name.toLowerCase().endsWith('.json')) {
+    const value = JSON.parse(text.replace(/^\uFEFF/, ''));
+    return { workbook: value.workbook ?? value };
+  }
+  const matrix = parseCsv(
+    text,
+    MAX_FILE_BYTES,
+    /\.tsv$/i.test(file.name) ? '\t' : csvDelimiter(text),
+  );
+  return { workbook: createWorkbook(file.name.replace(/\.[^.]+$/, ''), [], matrix) };
+}
 
 mountApp(
   'Univer',
-  async (container, changed, app, initialDocument) => {
+  async (container, changed, app, initialDocument, requestContext) => {
     const sheet = document.createElement('div');
     sheet.id = 'sheet';
     container.append(sheet);
@@ -45,6 +70,7 @@ mountApp(
     let workbook: ReturnType<typeof univerAPI.createWorkbook> | undefined;
     let listener: { dispose(): void } | undefined;
     let selectionTimer: ReturnType<typeof setTimeout> | undefined;
+    let disposed = false;
     const theme = new MutationObserver(() =>
       univerAPI.toggleDarkMode(document.documentElement.dataset.theme === 'dark'),
     );
@@ -87,65 +113,80 @@ mountApp(
           if (command.type === 2 && !command.options?.applyFormulaCalculationResult) changed();
           clearTimeout(selectionTimer);
           selectionTimer = setTimeout(() => {
-            const active = workbook?.getActiveSheet();
-            const range = active?.getSelection()?.getActiveRange();
-            if (!range || !active) return;
-            const selected = range.getRange();
-            const values = active
-              .getRange(
-                selected.startRow,
-                selected.startColumn,
-                Math.min(10, selected.endRow - selected.startRow + 1),
-                Math.min(10, selected.endColumn - selected.startColumn + 1),
-              )
-              .getValues();
-            void app
-              .updateModelContext({
-                content: [
-                  {
-                    type: 'text',
-                    text: JSON.stringify({
-                      app: 'Univer',
-                      ...(document.sourceFile
-                        ? {
-                            file: { name: document.sourceFile.name },
-                            readOnly: document.sourceFile.writable !== true,
-                          }
-                        : { documentId: document.id }),
-                      sheetId: active?.getSheetId(),
-                      range: range.getA1Notation(),
-                      values: values.map(row =>
-                        row.map(value => (typeof value === 'string' ? value.slice(0, 80) : value)),
-                      ),
-                    }),
-                  },
-                ],
-              })
-              .catch(() => undefined);
+            if (!disposed) requestContext?.();
           }, 350);
         });
       },
       async snapshot() {
         return { workbook: await snapshotWorkbook() };
       },
-      async importFile(file) {
-        if (file.name.toLowerCase().endsWith('.xlsx'))
-          return {
-            workbook: await importXlsx(new Uint8Array(await file.arrayBuffer()), file.name),
-          };
-        if (!/\.(csv|tsv|json)$/i.test(file.name))
-          throw new Error('Supported formats: XLSX, CSV, TSV, JSON.');
-        const text = await file.text();
-        if (file.name.toLowerCase().endsWith('.json')) {
-          const value = JSON.parse(text);
-          return { workbook: value.workbook ?? value };
-        }
-        const matrix = parseCsv(
-          text,
-          MAX_FILE_BYTES,
-          /\.tsv$/i.test(file.name) ? '\t' : csvDelimiter(text),
+      async describe() {
+        if (!workbook || disposed) throw new Error('No active workbook.');
+        const data = workbook.save();
+        const active = workbook.getActiveSheet();
+        const range = active.getSelection()?.getActiveRange();
+        const rect = range?.getRange();
+        const preview = readRange(
+          data,
+          readRangeSchema.parse({
+            sheetId: active.getSheetId(),
+            rowCount: 10,
+            columnCount: 10,
+          }),
         );
-        return { workbook: createWorkbook(file.name.replace(/\.[^.]+$/, ''), [], matrix) };
+        return {
+          sheets: data.sheetOrder.map(id => ({
+            id,
+            name: data.sheets[id].name,
+            rowCount: data.sheets[id].rowCount,
+            columnCount: data.sheets[id].columnCount,
+          })),
+          activeSheetId: active.getSheetId(),
+          preview,
+          ...(rect
+            ? {
+                selection: {
+                  range: range!.getA1Notation(),
+                  ...readRange(
+                    data,
+                    readRangeSchema.parse({
+                      sheetId: active.getSheetId(),
+                      startRow: rect.startRow,
+                      startColumn: rect.startColumn,
+                      rowCount: Math.min(10, rect.endRow - rect.startRow + 1),
+                      columnCount: Math.min(10, rect.endColumn - rect.startColumn + 1),
+                    }),
+                  ),
+                },
+              }
+            : {}),
+        };
+      },
+      async query(input) {
+        return readRange(await snapshotWorkbook(), readRangeSchema.parse(input));
+      },
+      async apply(input, unchanged) {
+        if (!workbook || disposed) throw new Error('No active workbook.');
+        if (initialDocument?.sourceFile && !initialDocument.sourceFile.writable)
+          throw new Error('Read-only spreadsheet. Save a copy before editing.');
+        const patch = spreadsheetApplySchema.parse(input);
+        const target = worksheet(workbook.save(), patch.sheetId);
+        if (
+          patch.cells.some(cell => cell.row >= target.rowCount || cell.column >= target.columnCount)
+        )
+          throw new Error('Live edits must stay inside existing worksheet bounds.');
+        if (!unchanged()) throw new Error('CONFLICT: The editor changed before applying.');
+        sheet.inert = true;
+        try {
+          const applied = await univerAPI.executeCommand('sheet.command.set-range-values', {
+            unitId: workbook.getId(),
+            subUnitId: patch.sheetId,
+            value: editValues(patch.cells),
+          });
+          if (!applied) throw new Error('The spreadsheet rejected this edit.');
+        } finally {
+          sheet.inert = false;
+        }
       },
       async exportFile() {
         const bytes = await exportXlsx(await snapshotWorkbook());
@@ -198,6 +239,8 @@ mountApp(
         return { data, bytes: new TextEncoder().encode(text) };
       },
       async dispose() {
+        if (disposed) return;
+        disposed = true;
         clearTimeout(selectionTimer);
         theme.disconnect();
         listener?.dispose();
@@ -205,5 +248,13 @@ mountApp(
       },
     };
   },
-  { accept: '.csv,.tsv,.json,.xlsx', spreadsheet: true, maxDocumentBytes: MAX_SPREADSHEET_BYTES },
+  {
+    kind: 'univer',
+    importFile: importSpreadsheetFile,
+    applySchema: spreadsheetApplySchema,
+    querySchema: readRangeSchema,
+    accept: '.csv,.tsv,.json,.xlsx',
+    spreadsheet: true,
+    maxDocumentBytes: MAX_SPREADSHEET_BYTES,
+  },
 );

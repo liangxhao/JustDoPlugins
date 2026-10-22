@@ -14,6 +14,7 @@ import { z } from 'zod';
 import { serveEditor } from './assets';
 import { type AppDocument, idSchema, type Kind, revisionSchema, titleSchema } from './contracts';
 import { DocumentStore } from './store';
+import { appIcons } from './icons';
 
 export interface DomainTool {
   name: string;
@@ -23,19 +24,32 @@ export interface DomainTool {
   view?: boolean;
   fileExtensions?: string[];
   appOnly?: boolean;
-  run: (input: Record<string, unknown>, store: DocumentStore) => unknown;
+  run: (
+    input: Record<string, unknown>,
+    store: DocumentStore,
+    context: { signal: AbortSignal },
+  ) => unknown;
 }
 export async function startServer(
   kind: Kind,
   label: string,
   initialData: () => Record<string, unknown>,
   domainTools: DomainTool[],
-  resources?: { readResource: (uri: string) => unknown },
+  options?: {
+    readResource?: (uri: string) => unknown;
+    validateDocument?: (data: Record<string, unknown>, signal?: AbortSignal) => Promise<void>;
+    close?: () => void;
+  },
 ) {
   const assets = await serveEditor(__dirname);
   const dataDir = process.env.MCP_APP_DATA_DIR || join(homedir(), '.local-mcp-apps', kind);
-  const store = new DocumentStore(join(dataDir, 'documents.sqlite'), kind);
+  const store = new DocumentStore(
+    join(dataDir, 'documents.sqlite'),
+    kind,
+    options?.validateDocument,
+  );
   const uri = `ui://${kind}/app.html`;
+  const icons = appIcons(kind);
   const metadata = (manual = false) => ({
     ui: { resourceUri: uri, ...(manual ? { visibility: ['app'] } : {}) },
     ...(manual ? { 'openai/ui': { entrypoints: [{ type: 'global' }] } } : {}),
@@ -54,13 +68,13 @@ export async function startServer(
       description: `Create an empty ${label} document.`,
       schema: z.object({ title: titleSchema.default(label) }),
       view: true,
-      run: input => store.create(String(input.title), initialData()),
+      run: (input, _store, { signal }) => store.create(String(input.title), initialData(), signal),
     },
     {
       name: 'import_document',
       description: 'Import user-selected data as one validated local document.',
       schema: z.object({ title: titleSchema, data: z.record(z.string(), z.unknown()) }),
-      run: input => store.create(String(input.title), input.data),
+      run: (input, _store, { signal }) => store.create(String(input.title), input.data, signal),
     },
     {
       name: 'list_documents',
@@ -93,18 +107,19 @@ export async function startServer(
         title: titleSchema,
         data: z.record(z.string(), z.unknown()),
       }),
-      run: input =>
+      run: (input, _store, { signal }) =>
         store.save(
           String(input.id),
           Number(input.expectedRevision),
           String(input.title),
           input.data,
+          signal,
         ),
     },
     ...domainTools,
   ];
   const server = new Server(
-    { name: `${kind}-app`, version: '0.1.0' },
+    { name: `${kind}-app`, version: '0.1.0', icons },
     {
       capabilities: { tools: {}, resources: {} },
       instructions: `${label} is a local offline MCP App. Use its creation tool for real user data; the result opens an interactive interface. Documents persist locally. Always read the latest revision before editing. Never claim lossless Excel round trips or cloud collaboration.`,
@@ -113,6 +128,7 @@ export async function startServer(
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: tools.map(tool => ({
       name: tool.name,
+      icons,
       title: tool.name === 'open_editor' ? label : tool.name,
       description: tool.description,
       inputSchema: z.toJSONSchema(tool.schema, { target: 'draft-7' }),
@@ -135,11 +151,14 @@ export async function startServer(
             : {}),
     })),
   }));
-  server.setRequestHandler(CallToolRequestSchema, async ({ params }) => {
+  server.setRequestHandler(CallToolRequestSchema, async ({ params }, { signal }) => {
     const tool = tools.find(item => item.name === params.name);
     if (!tool) throw new Error('Unknown tool.');
     try {
-      let result = await tool.run(tool.schema.parse(params.arguments ?? {}), store);
+      signal.throwIfAborted();
+      let result = await tool.run(tool.schema.strict().parse(params.arguments ?? {}), store, {
+        signal,
+      });
       if (tool.view && result && typeof result === 'object' && 'data' in result && 'id' in result) {
         // The App reads the latest revision by ID; view leases retain references only.
         const { data: _data, ...reference } = result as AppDocument;
@@ -162,7 +181,7 @@ export async function startServer(
     resources: [{ uri, name: label, mimeType: 'text/html;profile=mcp-app' }],
   }));
   server.setRequestHandler(ReadResourceRequestSchema, async ({ params }) => {
-    const resource = resources?.readResource(params.uri);
+    const resource = options?.readResource?.(params.uri);
     if (resource)
       return resource as { contents: { uri: string; mimeType: string; blob: string }[] };
     if (params.uri !== uri) throw new Error('Unknown resource.');
@@ -187,7 +206,9 @@ export async function startServer(
     if (closed) return;
     closed = true;
     assets.close();
-    void server.close().finally(() => store.close());
+    options?.close?.();
+    store.close();
+    void server.close();
   };
   process.once('SIGINT', close);
   process.once('SIGTERM', close);

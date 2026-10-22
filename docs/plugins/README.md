@@ -10,6 +10,9 @@
 | [hooks](hooks/README.md) | 独立分发的事件钩子 | `plugins/hooks/<name>/` | 暂无 |
 
 当前两个插件通过原生扩展安装，因此归入 extensions；它们内含的 MCP 服务和 MCP App 仍属于各自扩展，不另算独立 MCP 服务。
+两个扩展附带的任务 Skill 同样随所属扩展交付，不列为独立 skills 插件。
+
+后续工程工具扩展优先复用产品官方已有的 MCP App，并验证完整离线交付，选型与顺序见[官方 MCP App 选型与离线开发路线](../development/mcp-app-roadmap.md)。其中的上游候选不计入当前实现。
 
 每类列表由 `docs/plugins/<type>/README.md` 维护，各插件详细说明统一位于 `docs/plugins/<type>/<name>/README.md`。新增插件时同步更新对应类型列表与[文档导航](../README.md)。
 

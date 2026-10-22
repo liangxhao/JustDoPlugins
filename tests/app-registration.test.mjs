@@ -56,12 +56,15 @@ test('an unregistered UI or unsupported App contract cannot silently skip the ga
   }));
 test('stale sources and modified built assets cannot reuse an old App proof', () =>
   fixture(async root => {
-    await plugin(root, 'sample', { mcpApp: { contractVersion: 1 } });
+    await plugin(root, 'sample', {
+      mcpApp: { contractVersion: 1 },
+      openclaw: { extensions: ['./dist/extension.cjs'] },
+    });
     const dist = join(root, 'plugins/extensions/sample/dist');
     await mkdir(dist);
     const sourceFiles = ['plugins/extensions/sample/app.ts'];
     const assets = {};
-    for (const file of ['app.html', 'server.cjs']) {
+    for (const file of ['app.html', 'server.cjs', 'extension.cjs']) {
       await writeFile(join(dist, file), file);
       assets[file] = createHash('sha256').update(file).digest('hex');
     }
@@ -78,5 +81,8 @@ test('stale sources and modified built assets cannot reuse an old App proof', ()
     await assert.rejects(() => assertFreshAppBuild('sample', root), /sources changed/);
     await writeFile(join(root, sourceFiles[0]), 'export {};');
     await writeFile(join(dist, 'app.html'), 'Changed UI');
+    await assert.rejects(() => assertFreshAppBuild('sample', root), /asset integrity mismatch/);
+    await writeFile(join(dist, 'app.html'), 'app.html');
+    await writeFile(join(dist, 'extension.cjs'), 'Changed native entry');
     await assert.rejects(() => assertFreshAppBuild('sample', root), /asset integrity mismatch/);
   }));

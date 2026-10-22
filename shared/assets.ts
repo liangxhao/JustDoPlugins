@@ -1,7 +1,9 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
-import { join } from 'node:path';
+import { isAbsolute, join, resolve, sep } from 'node:path';
+
+import { listenLoopback } from './loopback';
 
 // WASM runs in this isolated loopback page, never by relaxing the host sandbox.
 export async function serveEditor(directory: string) {
@@ -10,7 +12,12 @@ export async function serveEditor(directory: string) {
   const integrity = JSON.parse(readFileSync(join(directory, 'integrity.json'), 'utf8')) as {
     assets: Record<string, string>;
   };
-  for (const file of ['server.cjs', 'app.html']) {
+  for (const file of ['server.cjs', 'app.html'])
+    if (!Object.hasOwn(integrity.assets, file))
+      throw new Error('Missing application asset fingerprint.');
+  for (const file of Object.keys(integrity.assets)) {
+    if (isAbsolute(file) || !resolve(directory, file).startsWith(resolve(directory) + sep))
+      throw new Error('Invalid application asset path.');
     const hash = createHash('sha256')
       .update(file === 'app.html' ? html : readFileSync(join(directory, file)))
       .digest('hex');
@@ -37,13 +44,7 @@ export async function serveEditor(directory: string) {
     response.end(request.method === 'HEAD' ? undefined : html);
   });
   let origin = '';
-  await new Promise<void>((resolve, reject) => {
-    http.once('error', reject);
-    http.listen(0, '127.0.0.1', resolve);
-  });
-  const address = http.address();
-  if (!address || typeof address === 'string') throw new Error('Loopback bind failed.');
-  origin = `http://127.0.0.1:${address.port}`;
+  origin = await listenLoopback(http);
   http.unref();
   const wrapper = `<!doctype html><html><head><meta charset="utf-8"><style>
     html,body{margin:0;width:100%;height:100%;overflow:hidden}iframe{border:0;width:100%;height:560px;display:block}

@@ -10,6 +10,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { assertFreshAppBuild, discoverApps } from '../scripts/apps.mjs';
 import { verifyAppContract } from './app-contract-checks.mjs';
+import { listenLoopback } from './loopback-host.mjs';
 
 const apps = await discoverApps();
 const bundle = async file =>
@@ -48,7 +49,7 @@ async function open(wrapper, search = '') {
       );
     } else res.writeHead(404).end();
   });
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  await listenLoopback(server);
   const context = await browser.newContext({ viewport: { width: 900, height: 700 } });
   const errors = [];
   await context.route('**/*', route => {

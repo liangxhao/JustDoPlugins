@@ -30,8 +30,8 @@ App 列表由仓库注册自动发现；`npm test` 包含 App 规范检查，`np
 
 ## 产物目录
 
-| 路径（相对仓库根目录） | 用途                                                     |
-| ---------------------- | -------------------------------------------------------- |
+| 路径（相对仓库根目录）            | 用途                                                     |
+| --------------------------------- | -------------------------------------------------------- |
 | `plugins/extensions/<name>/dist/` | 单个扩展的编译产物，包括静态页面、服务、完整性清单与许可 |
 | `dist/plugins/extensions/<name>/` | 干净的扩展交付目录，可直接导入                           |
 | `dist/archives/extensions/`       | 每个扩展的 `.tgz` 压缩包与 `SHA256SUMS`                  |
@@ -39,8 +39,9 @@ App 列表由仓库注册自动发现；`npm test` 包含 App 规范检查，`np
 当前压缩包为 `local-mcp-univer-app-0.1.0.tgz` 和 `local-mcp-perspective-app-0.1.0.tgz`。
 包名和版本取自各插件的 `package.json`，升级版本后文件名随之变化。
 
-每个交付目录包含包信息、原生清单、必要的扩展入口、完整 `dist/`，以及从 `docs/plugins/extensions/<name>/README.md` 复制的详细使用说明。
+每个交付目录包含包信息、原生清单、编译后的 `dist/extension.cjs`、原生声明的 `skills/`、完整 `dist/`，以及从 `docs/plugins/extensions/<name>/README.md` 复制的详细使用说明。
 JS、CSS、WASM 和字体内嵌于 `dist/app.html`；`dist/server.cjs` 是无 npm 运行依赖的 stdio 服务。
+Perspective 另带 `dist/validation-worker.mjs`、`dist/perspective-js.wasm` 和 `dist/perspective-server.wasm`，用于持久化前的真实引擎校验。构建按锁定的公开 Node 发行包迁移资源路径，使用兼容的 wasm32 引擎；这些文件必须随完整目录一起交付，不能只复制服务入口。
 `dist/licenses/` 和 `dist/THIRD_PARTY_NOTICES.json` 按实际打包依赖及其版本保留第三方许可。
 
 交付包不含开发依赖、公共源码、测试或仓库专用的 `mcpApp` 注册字段，复制到另一台机器后仍可独立导入。
@@ -52,7 +53,7 @@ JS、CSS、WASM 和字体内嵌于 `dist/app.html`；`dist/server.cjs` 是无 np
 原生清单声明附带 MCP，由 OpenClaw 管理相对安装路径、服务启停和进程；分发时使用 `extension` 类型。
 安装后的使用方法见[安装与使用](../guides/install-and-use.md)。本仓库不提供自动上架 Provider。
 
-启动时核对服务器和 HTML 的 SHA-256 清单，用于检测不完整或被修改的资源。
+构建指纹覆盖界面、服务、原生入口、校验器构建及附带 Skill；测试、打包和启动核对完整清单中全部资源的 SHA-256，包括离线校验器与 WASM，用于检测不完整或被修改的资源。
 分发方仍需对整个交付包提供可信哈希或签名，包内清单不能充当来源认证。
 `SHA256SUMS` 可用于核对传输前后的压缩包是否一致。
 

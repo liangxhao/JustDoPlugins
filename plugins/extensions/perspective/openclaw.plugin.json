@@ -5,6 +5,7 @@
   "description": "Offline data exploration with pivot tables, filters and charts.",
   "enabledByDefault": false,
   "categories": ["productivity"],
+  "skills": ["./skills"],
   "mcpServers": {
     "perspective": { "command": "node", "args": ["./dist/server.cjs"] }
   },

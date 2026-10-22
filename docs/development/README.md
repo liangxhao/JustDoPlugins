@@ -86,5 +86,6 @@ npm run pack:apps
 - [架构与隔离边界](architecture.md)：MCP Apps、数据存储、并发与离线资源。
 - [MCP App 开发与宿主接入](mcp-app-development.md)：界面协议、身份与来源、入口元数据、稳定回执和可选恢复。
 - [MCP App 接入 checklist](mcp-app-checklist.md)：区分必需项、按需项和真实宿主验收。
+- [MCP App 能力审查与接口约定](app-capabilities.md)：两个插件的能力补齐、当前内容查询、修改确认及发送前准备。
 - [测试与验收](testing.md)：自动测试、浏览器验证、状态保留、历史投影与权限验收。
 - [插件分类与列表](../plugins/README.md)：四类插件的范围、当前实现与文档入口。

@@ -14,9 +14,14 @@ import {
 
 export class DocumentStore {
   private readonly db: DatabaseSync;
+  private closed = false;
   constructor(
     path: string,
     private readonly kind: Kind,
+    private readonly validateDocument?: (
+      data: Record<string, unknown>,
+      signal?: AbortSignal,
+    ) => Promise<void>,
   ) {
     mkdirSync(dirname(path), { recursive: true });
     this.db = new DatabaseSync(path);
@@ -26,7 +31,12 @@ export class DocumentStore {
         revision INTEGER NOT NULL, updated_at TEXT NOT NULL, data TEXT NOT NULL
       )`);
   }
-  create(title: string, data: unknown): AppDocument {
+  private assertOpen() {
+    if (this.closed) throw new Error('Document store is closed.');
+  }
+  async create(title: string, data: unknown, signal?: AbortSignal): Promise<AppDocument> {
+    this.assertOpen();
+    signal?.throwIfAborted();
     const document: AppDocument = {
       id: randomUUID(),
       kind: this.kind,
@@ -35,6 +45,9 @@ export class DocumentStore {
       updatedAt: new Date().toISOString(),
       data: validateData(this.kind, data),
     };
+    await this.validateDocument?.(document.data, signal);
+    this.assertOpen();
+    signal?.throwIfAborted();
     this.db
       .prepare('INSERT INTO documents VALUES (?, ?, ?, ?, ?, ?)')
       .run(
@@ -48,6 +61,7 @@ export class DocumentStore {
     return document;
   }
   get(id: string): AppDocument {
+    this.assertOpen();
     const row = this.db
       .prepare('SELECT * FROM documents WHERE id = ? AND kind = ?')
       .get(idSchema.parse(id), this.kind);
@@ -65,6 +79,7 @@ export class DocumentStore {
     };
   }
   list() {
+    this.assertOpen();
     return this.db
       .prepare(
         `SELECT id, title, revision, updated_at AS updatedAt FROM documents
@@ -72,26 +87,36 @@ export class DocumentStore {
       )
       .all(this.kind);
   }
-  save(id: string, expectedRevision: number, title: string, data: unknown): AppDocument {
-    const serialized = JSON.stringify(validateData(this.kind, data));
+  async save(
+    id: string,
+    expectedRevision: number,
+    title: string,
+    data: unknown,
+    signal?: AbortSignal,
+  ): Promise<AppDocument> {
+    this.assertOpen();
+    signal?.throwIfAborted();
+    const parsedId = idSchema.parse(id),
+      parsedRevision = revisionSchema.parse(expectedRevision);
+    const parsedTitle = titleSchema.parse(title);
+    const validated = validateData(this.kind, data);
+    await this.validateDocument?.(validated, signal);
+    this.assertOpen();
+    signal?.throwIfAborted();
+    const serialized = JSON.stringify(validated);
     const row = this.db
       .prepare(
         `UPDATE documents SET title = ?, data = ?,
       revision = revision + 1, updated_at = ? WHERE id = ? AND kind = ? AND revision = ? RETURNING *`,
       )
-      .get(
-        titleSchema.parse(title),
-        serialized,
-        new Date().toISOString(),
-        idSchema.parse(id),
-        this.kind,
-        revisionSchema.parse(expectedRevision),
-      );
+      .get(parsedTitle, serialized, new Date().toISOString(), parsedId, this.kind, parsedRevision);
     if (!row)
       throw new Error('CONFLICT: Document changed. Read the latest revision before saving.');
     return this.toDocument(row);
   }
   close() {
+    if (this.closed) return;
+    this.closed = true;
     this.db.close();
   }
 }

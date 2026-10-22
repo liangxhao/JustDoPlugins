@@ -43,6 +43,16 @@ for (const name of await discoverApps()) {
     await mkdir(dirname(to), { recursive: true });
     await copyFile(from, to);
   }
+  const nativeManifest = JSON.parse(await readFile(join(source, 'openclaw.plugin.json'), 'utf8'));
+  for (const skill of nativeManifest.skills ?? []) {
+    const from = resolve(source, skill),
+      to = resolve(target, skill);
+    assert.ok(
+      !isAbsolute(skill) && from.startsWith(source + sep) && to.startsWith(target + sep),
+      'Skill directory must remain inside its plugin directory.',
+    );
+    await cp(from, to, { recursive: true });
+  }
   const runtimeManifest = Object.fromEntries(
     Object.entries(manifest).filter(
       ([key]) => !['devDependencies', 'scripts', 'mcpApp'].includes(key),
@@ -57,6 +67,31 @@ for (const name of await discoverApps()) {
   if (result.status !== 0)
     throw new Error(result.stderr || result.error?.message || 'Package creation failed.');
   const [packed] = JSON.parse(result.stdout);
+  const included = new Set(packed.files.map(file => file.path));
+  const integrity = JSON.parse(await readFile(join(source, 'dist/integrity.json'), 'utf8'));
+  for (const file of [
+    'README.md',
+    'package.json',
+    'openclaw.plugin.json',
+    'dist/app.html',
+    'dist/server.cjs',
+    'dist/integrity.json',
+    'dist/THIRD_PARTY_NOTICES.json',
+    ...Object.keys(integrity.assets).map(file => `dist/${file}`),
+    ...(manifest.openclaw?.extensions ?? []).map(file => file.replace(/^\.\//, '')),
+  ])
+    assert.ok(included.has(file), `Missing packaged runtime file: ${file}`);
+  for (const skill of nativeManifest.skills ?? []) {
+    const prefix = skill.replace(/^\.\//, '').replace(/\/$/, '') + '/';
+    assert.ok(
+      [...included].some(file => file.startsWith(prefix) && file.endsWith('/SKILL.md')),
+      `Missing packaged native skill: ${skill}`,
+    );
+  }
+  assert.ok(
+    [...included].every(file => !file.split('/').includes('node_modules')),
+    'Runtime package must not contain development dependency directories.',
+  );
   const hash = createHash('sha256')
     .update(await readFile(join(output, packed.filename)))
     .digest('hex');

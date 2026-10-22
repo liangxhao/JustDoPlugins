@@ -150,6 +150,10 @@ body > header svg {
   min-height: 0;
   position: relative;
 }
+.editor-stage {
+  position: absolute;
+  inset: 0;
+}
 #library {
   padding: 20px;
   overflow: auto;
@@ -190,7 +194,7 @@ body > header svg {
 #file {
   display: none;
 }
-#editor > perspective-viewer,
+#editor perspective-viewer,
 #sheet {
   display: block;
   width: 100%;
@@ -230,7 +234,7 @@ dialog button {
   #status {
     display: none;
   }
-  #status.error {
+  #status.important {
     display: block;
   }
   body > header {

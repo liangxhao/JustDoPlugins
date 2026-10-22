@@ -8,17 +8,17 @@
   "type": "module",
   "license": "Apache-2.0",
   "engines": {
-    "node": ">=24"
+    "node": ">=24.16.0 <25"
   },
   "files": [
     "dist",
     "README.md",
     "openclaw.plugin.json",
-    "extension.cjs"
+    "skills"
   ],
   "openclaw": {
     "extensions": [
-      "./extension.cjs"
+      "./dist/extension.cjs"
     ]
   },
   "bin": {

@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { readFile, mkdir, writeFile, readdir, copyFile, rm } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
 import { build } from 'esbuild';
 
@@ -15,6 +15,7 @@ const apps = await discoverApps();
 for (const name of requested ? [requested] : apps) {
   if (!apps.includes(name)) throw new Error('Unknown registered app.');
   const output = join(root, 'plugins', 'extensions', name, 'dist');
+  await rm(output, { recursive: true, force: true });
   await mkdir(output, { recursive: true });
   const browser = await build({
     absWorkingDir: root,
@@ -59,8 +60,9 @@ for (const name of requested ? [requested] : apps) {
     banner: { js: '#!/usr/bin/env node' },
     metafile: true,
   });
+  let extension;
   if (existsSync(join(root, 'plugins', 'extensions', name, 'extension.ts'))) {
-    await build({
+    extension = await build({
       absWorkingDir: root,
       entryPoints: [`plugins/extensions/${name}/extension.ts`],
       outfile: join(output, 'extension.cjs'),
@@ -69,8 +71,13 @@ for (const name of requested ? [requested] : apps) {
       platform: 'node',
       target: 'node24',
       external: ['openclaw/*'],
+      metafile: true,
     });
   }
+  const hook = `plugins/extensions/${name}/build.mjs`;
+  const additional = existsSync(join(root, hook))
+    ? await (await import(pathToFileURL(join(root, hook)).href)).buildAdditionalAssets(root, output)
+    : { assets: [], inputs: [] };
   const licenses = join(output, 'licenses');
   await rm(licenses, { recursive: true, force: true });
   await mkdir(licenses, { recursive: true });
@@ -78,6 +85,7 @@ for (const name of requested ? [requested] : apps) {
   for (const path of [
     ...Object.keys(browser.metafile.inputs),
     ...Object.keys(server.metafile.inputs),
+    ...additional.inputs,
   ]) {
     const normalized = path.replaceAll('\\', '/');
     const match = [...normalized.matchAll(/(?:^|\/)node_modules\/((?:@[^/]+\/)?[^/]+)/g)].at(-1);
@@ -119,6 +127,9 @@ for (const name of requested ? [requested] : apps) {
       [
         ...Object.keys(browser.metafile.inputs),
         ...Object.keys(server.metafile.inputs),
+        ...Object.keys(extension?.metafile.inputs ?? {}),
+        ...additional.inputs,
+        ...(existsSync(join(root, hook)) ? [hook] : []),
         `plugins/extensions/${name}/package.json`,
         `plugins/extensions/${name}/openclaw.plugin.json`,
         'scripts/build.mjs',
@@ -128,6 +139,17 @@ for (const name of requested ? [requested] : apps) {
       ].filter(file => !file.replaceAll('\\', '/').includes('node_modules/')),
     ),
   ].sort();
+  const skillDirectory = join(root, 'plugins', 'extensions', name, 'skills');
+  if (existsSync(skillDirectory)) {
+    for (const entry of await readdir(skillDirectory, { recursive: true, withFileTypes: true })) {
+      if (entry.isFile())
+        sourceFiles.push(
+          join(entry.parentPath, entry.name)
+            .slice(root.length + 1)
+            .replaceAll('\\', '/'),
+        );
+    }
+  }
   await writeFile(
     join(output, 'integrity.json'),
     JSON.stringify(
@@ -138,7 +160,12 @@ for (const name of requested ? [requested] : apps) {
         sourceHash: await sourceFingerprint(sourceFiles),
         assets: Object.fromEntries(
           await Promise.all(
-            ['app.html', 'server.cjs'].map(async file => [
+            [
+              'app.html',
+              'server.cjs',
+              ...(extension ? ['extension.cjs'] : []),
+              ...additional.assets,
+            ].map(async file => [
               file,
               createHash('sha256')
                 .update(await readFile(join(output, file)))

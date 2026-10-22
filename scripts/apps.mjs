@@ -60,7 +60,19 @@ export async function assertFreshAppBuild(name, root = repositoryRoot) {
     manifest.sourceHash,
     `${name}: App sources changed; run npm run build before tests or packaging`,
   );
-  for (const file of ['app.html', 'server.cjs']) {
+  const pkg = JSON.parse(
+    await readFile(join(root, 'plugins/extensions', name, 'package.json'), 'utf8'),
+  );
+  const extensionFiles = (pkg.openclaw?.extensions ?? [])
+    .filter(file => file.startsWith('./dist/'))
+    .map(file => file.slice('./dist/'.length));
+  for (const file of ['app.html', 'server.cjs', ...extensionFiles])
+    assert.ok(Object.hasOwn(manifest.assets, file), `${name}: missing asset fingerprint: ${file}`);
+  for (const file of Object.keys(manifest.assets)) {
+    assert.ok(
+      !isAbsolute(file) && resolve(directory, file).startsWith(directory + sep),
+      'Invalid App asset path',
+    );
     assert.equal(
       createHash('sha256')
         .update(await readFile(join(directory, file)))

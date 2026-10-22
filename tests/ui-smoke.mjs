@@ -10,6 +10,8 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import ExcelJS from 'exceljs';
 import { spreadsheetFixture } from './xlsx-fixture.mjs';
+import { verifyLiveApp } from './live-app-checks.mjs';
+import { listenLoopback } from './loopback-host.mjs';
 
 const host = await build({
   entryPoints: ['tests/host.ts'],
@@ -22,19 +24,24 @@ const browser = await chromium.launch({ channel: 'chrome', headless: true });
 const reports = resolve('test-results/ui');
 await mkdir(join(reports, 'screenshots'), { recursive: true });
 try {
-  const modes = ['univer', 'perspective', 'univer-file', 'univer-write'];
+  const modes = ['univer', 'perspective', 'univer-file', 'univer-write', 'perspective-file'];
   if (process.argv[2] && !modes.includes(process.argv[2])) throw new Error('Unknown UI test mode');
   for (const mode of process.argv[2] ? [process.argv[2]] : modes) {
-    const name = mode.startsWith('univer-') ? 'univer' : mode;
+    const analysisFile = mode === 'perspective-file';
+    const name = mode.startsWith('univer-') ? 'univer' : analysisFile ? 'perspective' : mode;
     const fileMode = mode.startsWith('univer-');
     const writable = mode === 'univer-write';
-    const fixture = fileMode ? await spreadsheetFixture(false, true) : undefined;
+    const fixture = fileMode
+      ? await spreadsheetFixture(false, true)
+      : analysisFile
+        ? Buffer.from('编号\t金额\n001\t120\n002\t240')
+        : undefined;
     let sourceBytes = fixture;
     let writeUnknown = false;
     const sourceWrites = [];
     const etag = () => createHash('sha256').update(sourceBytes).digest('hex');
     const fileToken = 'b'.repeat(64);
-    const fileUri = `app-file://${fileToken}`;
+    const fileUri = analysisFile ? 'openclaw-file://analysis-fixture' : `app-file://${fileToken}`;
     const dir = await mkdtemp(join(tmpdir(), 'mcp-app-ui-'));
     const client = new Client({ name: 'offline-ui-test', version: '1.0.0' });
     await client.connect(
@@ -58,34 +65,36 @@ try {
       assert.ok(!staged.isError, JSON.stringify(staged));
     }
     const initial = await client.callTool(
-      fileMode
-        ? { name: 'open_editor', arguments: {} }
-        : name === 'univer'
-          ? {
-              name: 'create_spreadsheet',
-              arguments: {
-                title: '项目预算',
-                columns: ['部门', '项目', '预算', '实际'],
-                rows: [
-                  ['研发', '平台升级', 80000, 75000],
-                  ['市场', '客户活动', 45000, 42000],
-                  ['研发', '测试设备', 20000, 18500],
-                  ['运营', '培训', 12000, 9800],
-                ],
+      analysisFile
+        ? { name: 'preview_file', arguments: { file: { name: '分析.tsv', resourceUri: fileUri } } }
+        : fileMode
+          ? { name: 'open_editor', arguments: {} }
+          : name === 'univer'
+            ? {
+                name: 'create_spreadsheet',
+                arguments: {
+                  title: '项目预算',
+                  columns: ['部门', '项目', '预算', '实际'],
+                  rows: [
+                    ['研发', '平台升级', 80000, 75000],
+                    ['市场', '客户活动', 45000, 42000],
+                    ['研发', '测试设备', 20000, 18500],
+                    ['运营', '培训', 12000, 9800],
+                  ],
+                },
+              }
+            : {
+                name: 'analyze_data',
+                arguments: {
+                  title: '部门预算分析',
+                  rows: [
+                    { 部门: '研发', 项目: '平台升级', 预算: 80000, 实际: 75000 },
+                    { 部门: '市场', 项目: '客户活动', 预算: 45000, 实际: 42000 },
+                    { 部门: '研发', 项目: '测试设备', 预算: 20000, 实际: 18500 },
+                    { 部门: '运营', 项目: '培训', 预算: 12000, 实际: 9800 },
+                  ],
+                },
               },
-            }
-          : {
-              name: 'analyze_data',
-              arguments: {
-                title: '部门预算分析',
-                rows: [
-                  { 部门: '研发', 项目: '平台升级', 预算: 80000, 实际: 75000 },
-                  { 部门: '市场', 项目: '客户活动', 预算: 45000, 实际: 42000 },
-                  { 部门: '研发', 项目: '测试设备', 预算: 20000, 实际: 18500 },
-                  { 部门: '运营', 项目: '培训', 预算: 12000, 实际: 9800 },
-                ],
-              },
-            },
     );
     const resource = await client.readResource({
       uri: `ui://${name}/app.html`,
@@ -114,27 +123,38 @@ try {
         const buffers = [];
         for await (const data of req) buffers.push(data);
         const params = JSON.parse(Buffer.concat(buffers).toString());
-        if (!fileMode || params.uri !== fileUri) {
+        if ((!fileMode && !analysisFile) || params.uri !== fileUri) {
           res.writeHead(404).end();
           return;
         }
         res.setHeader('Content-Type', 'application/json');
         res.end(
           JSON.stringify(
-            writable
+            analysisFile
               ? {
                   contents: [
                     {
                       uri: fileUri,
-                      blob: sourceBytes.toString('base64'),
-                      mimeType: 'application/octet-stream',
-                      _meta: {
-                        'openai/resource': { writable: true, etag: etag() },
-                      },
+                      text: sourceBytes.toString('utf8'),
+                      mimeType: 'text/tab-separated-values',
+                      _meta: { 'openai/resource': { writable: true, etag: etag() } },
                     },
                   ],
                 }
-              : await client.readResource({ uri: params.uri }),
+              : writable
+                ? {
+                    contents: [
+                      {
+                        uri: fileUri,
+                        blob: sourceBytes.toString('base64'),
+                        mimeType: 'application/octet-stream',
+                        _meta: {
+                          'openai/resource': { writable: true, etag: etag() },
+                        },
+                      },
+                    ],
+                  }
+                : await client.readResource({ uri: params.uri }),
           ),
         );
       } else if (req.url === '/write') {
@@ -166,7 +186,7 @@ try {
         );
       }
     });
-    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    await listenLoopback(server);
     const context = await browser.newContext({
       viewport: { width: 1360, height: 790 },
     });
@@ -190,8 +210,71 @@ try {
       await page.goto(`http://127.0.0.1:${server.address().port}`);
       const wrapperFrame = page.frameLocator('iframe');
       const editor = wrapperFrame.frameLocator('iframe');
+      if (analysisFile) {
+        await editor
+          .locator('[data-app-toolbar] #status')
+          .filter({ hasText: '只读预览' })
+          .waitFor({ timeout: 90000 });
+        await editor.locator('.title:not(:disabled)').waitFor();
+        await page.setViewportSize({ width: 420, height: 790 });
+        assert.equal(
+          await editor.locator('[data-app-toolbar] #status').isVisible(),
+          true,
+          'Read-only state must remain visible in narrow layouts',
+        );
+        await page.setViewportSize({ width: 1360, height: 790 });
+        assert.equal(
+          await editor.getByRole('button', { name: '保存', exact: true }).isVisible(),
+          false,
+        );
+        assert.equal(
+          (await client.callTool({ name: 'list_documents', arguments: {} })).structuredContent
+            .documents.length,
+          0,
+        );
+        await editor
+          .locator('perspective-viewer')
+          .evaluate(async element =>
+            element.restore({ group_by: ['编号'], columns: ['金额'], settings: false }),
+          );
+        await editor.getByRole('button', { name: '保存副本', exact: true }).click();
+        await editor.locator('[data-app-toolbar] #status').filter({ hasText: '已保存' }).waitFor();
+        await editor.locator('.title:not(:disabled)').waitFor();
+        const docs = (await client.callTool({ name: 'list_documents', arguments: {} }))
+          .structuredContent.documents;
+        assert.equal(docs.length, 1);
+        const copy = (
+          await client.callTool({ name: 'read_document', arguments: { id: docs[0].id } })
+        ).structuredContent;
+        assert.deepEqual(copy.data.rows, [
+          { 编号: '001', 金额: 120 },
+          { 编号: '002', 金额: 240 },
+        ]);
+        assert.deepEqual(copy.data.config.group_by, ['编号']);
+        assert.equal(sourceBytes.equals(fixture), true);
+        assert.equal(sourceWrites.length, 0);
+        const bounds = await editor.locator('perspective-viewer').boundingBox();
+        assert.ok(
+          bounds && bounds.height > 300 && bounds.width > 250,
+          'Saving a file copy must retain a visible analysis viewer',
+        );
+        await page.screenshot({ path: join(reports, 'screenshots', 'perspective-file.png') });
+        await verifyLiveApp(page, editor, client, name);
+        assert.deepEqual(errors, []);
+        await writeFile(
+          join(reports, 'perspective-file-proof.json'),
+          JSON.stringify({ sourceReadOnly: true, savedCopy: true, requests, errors }, null, 2),
+        );
+        console.log(
+          'perspective: TSV file preview, configuration and saved copy passed; source unchanged',
+        );
+        continue;
+      }
       if (writable) {
-        await editor.locator('#status').filter({ hasText: '已保存' }).waitFor({ timeout: 90000 });
+        await editor
+          .locator('[data-app-toolbar] #status')
+          .filter({ hasText: '已保存' })
+          .waitFor({ timeout: 90000 });
         await editor.locator('.title:not(:disabled)').waitFor();
         const nameBox = editor.locator('[data-u-comp="defined-name"] input');
         await nameBox.fill('C3');
@@ -200,7 +283,7 @@ try {
         await editor
           .getByRole('button', { name: '保存', exact: true })
           .evaluate(button => button.click());
-        await editor.locator('#status').filter({ hasText: '已保存' }).waitFor();
+        await editor.locator('[data-app-toolbar] #status').filter({ hasText: '已保存' }).waitFor();
         await editor.locator('.title:not(:disabled)').waitFor();
         assert.equal(sourceWrites.length, 1);
         const saved = new ExcelJS.Workbook();
@@ -276,7 +359,10 @@ try {
         continue;
       }
       if (fileMode) {
-        await editor.locator('#status').filter({ hasText: '只读预览' }).waitFor({ timeout: 90000 });
+        await editor
+          .locator('[data-app-toolbar] #status')
+          .filter({ hasText: '只读预览' })
+          .waitFor({ timeout: 90000 });
         await editor.locator('.title:not(:disabled)').waitFor();
         assert.equal(await editor.locator('.title').getAttribute('readonly'), '');
         const modelContext = await page.evaluate(() => JSON.stringify(globalThis.context));
@@ -308,7 +394,10 @@ try {
         assert.equal(exported.getWorksheet('部门预算').getCell('C5').formula, 'SUM(C3:C4)');
         assert.equal(exported.getWorksheet('部门预算').getCell('C5').result, 125000);
         await editor.getByRole('button', { name: '重新读取', exact: true }).click();
-        await editor.locator('#status').filter({ hasText: '只读预览' }).waitFor();
+        await editor
+          .locator('[data-app-toolbar] #status')
+          .filter({ hasText: '只读预览' })
+          .waitFor();
         await editor.locator('.title:not(:disabled)').waitFor();
         await page.screenshot({
           path: join(reports, 'screenshots', 'univer-xlsx-preview.png'),
@@ -356,7 +445,10 @@ try {
         );
         continue;
       }
-      await editor.locator('#status').filter({ hasText: '已保存' }).waitFor({ timeout: 90000 });
+      await editor
+        .locator('[data-app-toolbar] #status')
+        .filter({ hasText: '已保存' })
+        .waitFor({ timeout: 90000 });
       await editor.locator('.title:not(:disabled)').waitFor();
       if (name === 'univer') {
         const canvas = editor.locator('canvas[id^="univer-sheet-main-canvas"]');
@@ -378,7 +470,7 @@ try {
         await editor
           .getByRole('button', { name: '保存', exact: true })
           .evaluate(button => button.click());
-        await editor.locator('#status').filter({ hasText: '已保存' }).waitFor();
+        await editor.locator('[data-app-toolbar] #status').filter({ hasText: '已保存' }).waitFor();
         await editor.locator('.title:not(:disabled)').waitFor();
         const committed = await client.callTool({
           name: 'read_document',
@@ -401,7 +493,7 @@ try {
       }
       await editor.locator('.title').fill(`${name} edited`);
       await editor.getByRole('button', { name: '保存', exact: true }).click();
-      await editor.locator('#status').filter({ hasText: '已保存' }).waitFor();
+      await editor.locator('[data-app-toolbar] #status').filter({ hasText: '已保存' }).waitFor();
       const persisted = await client.callTool({
         name: 'read_document',
         arguments: { id: initial.structuredContent.id },
@@ -418,7 +510,7 @@ try {
       if (name === 'perspective')
         await editor.locator('perspective-viewer').evaluate(element => element.flush());
       assert.equal(
-        await editor.locator('#status').textContent(),
+        await editor.locator('[data-app-toolbar] #status').textContent(),
         '已保存',
         'A host theme change is not a document edit',
       );
@@ -437,7 +529,10 @@ try {
         path: join(reports, 'screenshots', `${name}.png`),
       });
       await page.reload();
-      await editor.locator('#status').filter({ hasText: '已保存' }).waitFor({ timeout: 90000 });
+      await editor
+        .locator('[data-app-toolbar] #status')
+        .filter({ hasText: '已保存' })
+        .waitFor({ timeout: 90000 });
       assert.equal(await editor.locator('.title').inputValue(), `${name} edited`);
       await editor.locator('.title:not(:disabled)').waitFor();
       await editor.locator('.title').fill('Unsaved title');
@@ -456,7 +551,7 @@ try {
         mimeType: 'text/csv',
         buffer: Buffer.from('编号,金额\n001,120\n002,240'),
       });
-      await editor.locator('#status').filter({ hasText: '已保存' }).waitFor();
+      await editor.locator('[data-app-toolbar] #status').filter({ hasText: '已保存' }).waitFor();
       await editor.locator('.title:not(:disabled)').waitFor();
       assert.equal(await editor.locator('.title').inputValue(), '导入验证');
       await page.setViewportSize({ width: 420, height: 790 });
@@ -527,6 +622,7 @@ try {
           .evaluate(el => el.firstElementChild === globalThis.originalEditor),
         'Shared header transitions must preserve the live editor instance',
       );
+      await verifyLiveApp(page, editor, client, name);
       assert.deepEqual(errors, []);
       await writeFile(
         join(reports, `${name}-ui-proof.json`),
