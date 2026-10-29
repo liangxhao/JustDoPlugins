@@ -89,6 +89,20 @@ export function validateData(kind: Kind, data: unknown): Record<string, unknown>
       .max(MAX_ROWS + 1)
       .parse(sheet.rowCount);
     z.number().int().min(1).max(MAX_COLUMNS).parse(sheet.columnCount);
+    for (const [field, extent] of [
+      ['rowData', Number(sheet.rowCount)],
+      ['columnData', Number(sheet.columnCount)],
+    ] as const) {
+      if (sheet[field] === undefined) continue;
+      const metadata = z.record(z.string(), z.record(z.string(), z.unknown())).safeParse(sheet[field]);
+      if (!metadata.success)
+        throw new Error(`Invalid ${field} metadata. Expected records keyed by worksheet indices.`);
+      for (const index of Object.keys(sheet[field] as Record<string, unknown>)) {
+        const position = Number(index);
+        if (!/^(0|[1-9]\d*)$/.test(index) || !Number.isSafeInteger(position) || position >= extent)
+          throw new Error(`${field} metadata index is outside worksheet bounds.`);
+      }
+    }
     const cellData = z
       .record(z.string(), z.record(z.string(), z.unknown()))
       .parse(sheet.cellData ?? {});

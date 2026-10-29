@@ -161,7 +161,7 @@ for (const name of ['univer', 'perspective']) {
             },
           });
           assert.equal(rejected.isError, true, sheetId);
-          assert.match(rejected.content[0].text, /Worksheet not found/, sheetId);
+          assert.match(rejected.content[0].text, /Worksheet not found|Invalid worksheet ID/, sheetId);
           const unchanged = await client.callTool({
             name: 'read_document',
             arguments: { id: document.id },

@@ -28,6 +28,12 @@ npm run pack:apps
 单独排查时可运行 `node --test tests/xlsx-writeback.test.mjs`，或用 `npm run test:ui -- univer-write` 验证指定浏览器场景。
 浏览器模式还包括 `univer`、`perspective`、`univer-file` 和 `perspective-file`。
 
+`node tests/univer-offline.mjs` 验证增强后的 Univer：普通文档、减少动画、授权源文件三种场景。可单独传 `document`、`reduce` 或 `source`。覆盖真实中英文资源、agent 样式/工作表/行列/范围操作、一次撤销重做、原生键盘填充与共享公式、跨表引用、手改冲突、保存重开和四种下载格式；源文件场景核对值及格式写回、原件未知部件保留，以及结构/规则改动在写入前拒绝。报告和截图输出到 `test-results/ui/univer-offline/`，测试使用合成数据并拒绝公网请求。
+
+`tests/univer-operations.test.mjs` 使用隔离的真实无界面引擎验证与界面共用的命令、公式引用和共享公式物化，另覆盖队列容量、取消、关闭、Worker 监听清理及真实 stdio 并发 revision。`tests/univer-features.test.mjs` 覆盖原生规则空态归一化、不可保留的 XLSX 功能明确拒绝及大表文本导出的边界扫描。
+
+`tests/univer-offline-data-review.test.mjs` 验证行列元数据不能越过声明容量，以及只有隐藏/尺寸属性的空行空列在 XLSX 导入时的边界；`tests/xlsx.test.mjs` 同时检查这些空行导出、重新导入和原数据不变。
+
 需要重现 Perspective 的完整非地图图集时，在最新构建后运行：
 
 ```sh

@@ -27,7 +27,7 @@ const fixture = window as unknown as { businessCalls: number; inspectionCalls: n
 fixture.businessCalls = 0;
 fixture.inspectionCalls = 0;
 bridge.oncalltool = async params => {
-  if (['inspect_analysis', 'list_visualizations'].includes(params.name)) fixture.inspectionCalls++;
+  if (['inspect_analysis', 'list_visualizations', 'preview_spreadsheet_edit', 'inspect_spreadsheet'].includes(params.name)) fixture.inspectionCalls++;
   else fixture.businessCalls++;
   const response = await fetch('/tool', { method: 'POST', body: JSON.stringify(params) });
   return response.json();

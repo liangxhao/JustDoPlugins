@@ -1,6 +1,6 @@
 # MCP App 能力审查与接口约定
 
-审查日期：2026-10-22。适用范围为当前 Univer 与 Perspective 扩展，开发协议版本沿用 OpenClaw 2026.10.4 与锁定的 MCP Apps SDK。这里记录可交付的插件能力及仍需由接入方验收的边界。
+审查更新：2026-10-30。适用范围为当前 Univer 与 Perspective 扩展，开发协议版本沿用 OpenClaw 2026.10.4 与锁定的 MCP Apps SDK。这里记录可交付的插件能力及仍需由接入方验收的边界。
 
 ## 审查结果
 
@@ -29,10 +29,10 @@ stdio MCP 工具操作本地已保存文档。App 工具属于已加载的浏览
 | ------------------ | ---------------------- | --------------------------------------------------- |
 | 创建持久文档       | `create_spreadsheet`   | `analyze_data`                                      |
 | 局部读取已保存数据 | `read_range`           | `read_analysis`                                     |
-| 更新已保存数据     | `update_cells`         | `replace_data`、`append_data`、`configure_analysis`、`configure_workspace` |
+| 更新已保存数据     | `update_cells`、`edit_spreadsheet` | `replace_data`、`append_data`、`configure_analysis`、`configure_workspace` |
 | 当前实例快照       | `spreadsheet_snapshot` | `analysis_snapshot`                                 |
 | 当前实例查询       | `spreadsheet_query`    | `analysis_query`                                    |
-| 元数据与精确内容   | `read_range`          | `list_visualizations`、`inspect_analysis`、`analysis_inspect` |
+| 元数据与精确内容   | `read_range`、`inspect_spreadsheet`、`spreadsheet_inspect` | `list_visualizations`、`inspect_analysis`、`analysis_inspect` |
 | 修改当前实例       | `spreadsheet_apply`    | `analysis_apply`                                    |
 | 发送前准备         | `prepare_context`      | `prepare_context`                                   |
 
@@ -61,6 +61,8 @@ snapshot 无参数，返回 `structuredContent`：`kind`（`univer.snapshot.v1` 
 ```
 
 Univer 的 patch 是 `{ "sheetId": "sheet1", "cells": [{ "row": 1, "column": 1, "value": 120 }] }`。行列从零开始，每项只能指定 `value` 或以 `=` 开头的 `formula`；一次最多 1000 个不重复单元格，均在现有工作表范围内。一条稀疏命令保留其它单元格与样式，可以一次撤销；只读文件拒绝修改。
+
+也支持 `patch: { "operation": { … } }`，与原写法二选一。通过公开原生命令执行一次样式、工作表、行列、冻结、合并清除、排序或筛选范围操作，公式引用由同版本引擎维护。保存工具与当前实例使用相同 schema 和无界面引擎预检；预检不写库，修改前仍重验原实例及内容戳。`spreadsheet_inspect` 提供实际操作规范、解析后的样式及结构摘要。共享公式在副本中展开，保留原生编辑器和撤销历史。源 XLSX 的结构及规则写回继续明确拒绝；完整契约与交换格式限制见 Univer 详细说明。
 
 Perspective 的 patch 支持 `{ "panelId": "overview", "config": { "group_by": ["部门"], "columns": ["金额"], "aggregates": { "金额": "sum" } } }`。未提供配置保留，数组替换对应设置。`workspace` 可管理最多 8 个同源面板、拆分/标签布局、当前面板、主图点击联动、全局过滤及共享配色；显式 `panels` 替换完整面板集，其余变更保留现有面板。`cells`、`append`、`rows` 可修改现有类型的源记录。先预检整个工作区，再更新同一 viewer；当前文件不写回。完整契约见插件详细说明。
 

@@ -2,6 +2,7 @@ import type { ICellData, IStyleData, IWorkbookData } from '@univerjs/presets';
 import JSZip from 'jszip';
 
 import { exportXlsx, validateXlsxArchive } from './xlsx';
+import { workbookFeatureResources } from './workbook-features';
 
 const ns = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
 const children = (node: Element, name: string) =>
@@ -53,6 +54,8 @@ export async function writebackXlsx(
   current: IWorkbookData,
 ): Promise<Uint8Array> {
   validateXlsxArchive(original);
+  if (stable(workbookFeatureResources(baseline)) !== stable(workbookFeatureResources(current)))
+    throw new Error('Saving filter, validation or conditional-format rules to this source file is not supported. Save a local copy or export workbook JSON. / 当前规则变更请保存为本地副本或工作簿 JSON。');
   if (stable(baseline.sheetOrder) !== stable(current.sheetOrder))
     throw new Error(
       'Saving sheet insertion, deletion or reordering to the source file is not supported.',

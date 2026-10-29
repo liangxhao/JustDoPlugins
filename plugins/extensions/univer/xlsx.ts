@@ -1,5 +1,7 @@
 import type { ICellData, IStyleData, IWorkbookData, IWorksheetData } from '@univerjs/presets';
 import ExcelJS from 'exceljs';
+import { validateData } from '../../../shared/contracts';
+import { assertXlsxFeatureSupport } from './workbook-features';
 
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
 const MAX_UNPACKED_BYTES = 64 * 1024 * 1024;
@@ -165,13 +167,14 @@ export async function importXlsx(bytes: Uint8Array, title: string): Promise<IWor
     styles: Record<string, IStyleData> = {};
   const styleIds = new Map<string, string>();
   for (const source of book.worksheets) {
-    if (source.rowCount > 5000 || source.columnCount > 100)
+    const columnCount = Math.max(source.columnCount, source.columns?.length ?? 0);
+    if (source.rowCount > 5000 || columnCount > 100)
       throw new Error('Worksheet exceeds 5000 rows or 100 columns.');
     const id = `sheet-${source.id}`;
     const cellData: Record<number, Record<number, ICellData>> = {};
     const rowData: Record<number, { h?: number; hd?: 0 | 1 }> = {},
       columnData: Record<number, { w?: number; hd?: 0 | 1 }> = {};
-    source.eachRow({ includeEmpty: false }, (row, r) => {
+    source.eachRow({ includeEmpty: true }, (row, r) => {
       if (row.height || row.hidden)
         rowData[r - 1] = {
           ...(row.height ? { h: (row.height * 96) / 72 } : {}),
@@ -223,7 +226,7 @@ export async function importXlsx(bytes: Uint8Array, title: string): Promise<IWor
       name: source.name,
       hidden: source.state === 'visible' ? 0 : 1,
       rowCount: Math.max(200, source.rowCount),
-      columnCount: Math.max(26, source.columnCount),
+      columnCount: Math.max(26, columnCount),
       cellData,
       rowData,
       columnData,
@@ -255,6 +258,8 @@ export async function importXlsx(bytes: Uint8Array, title: string): Promise<IWor
 
 /** Export supported sheet data; unsupported Excel objects are deliberately omitted. */
 export async function exportXlsx(workbook: IWorkbookData): Promise<Uint8Array> {
+  validateData('univer', { workbook });
+  assertXlsxFeatureSupport(workbook);
   const book = new ExcelJS.Workbook();
   const excelColor = (value: IStyleData['cl']): Partial<ExcelJS.Color> | undefined => {
     const hex = value && typeof value.rgb === 'string' ? value.rgb.replace(/^#/, '') : undefined;
@@ -321,8 +326,11 @@ export async function exportXlsx(workbook: IWorkbookData): Promise<Uint8Array> {
         }
       }
     for (const [r, row] of Object.entries(source.rowData ?? {})) {
-      if (row?.h) sheet.getRow(Number(r) + 1).height = (row.h * 72) / 96;
-      if (row?.hd) sheet.getRow(Number(r) + 1).hidden = true;
+      const target = sheet.getRow(Number(r) + 1);
+      if (row?.h) target.height = (row.h * 72) / 96;
+      if (row?.hd) target.hidden = true;
+      // ExcelJS drops a hidden empty row unless a null cell anchors its model.
+      if ((row?.h || row?.hd) && !target.cellCount) target.getCell(1).value = null;
     }
     for (const [c, column] of Object.entries(source.columnData ?? {})) {
       if (column?.w) sheet.getColumn(Number(c) + 1).width = Math.max(1, (column.w - 5) / 7);

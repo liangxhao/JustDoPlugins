@@ -1,8 +1,6 @@
 import '@univerjs/preset-sheets-core/lib/index.css';
 
 import { UniverSheetsCorePreset } from '@univerjs/preset-sheets-core';
-import enUS from '@univerjs/preset-sheets-core/locales/en-US';
-import zhCN from '@univerjs/preset-sheets-core/locales/zh-CN';
 import {
   createUniver,
   ILocalStorageService,
@@ -12,19 +10,20 @@ import {
 } from '@univerjs/presets';
 import { CalculationMode } from '@univerjs/sheets-formula';
 
-import { createWorkbook, MAX_SPREADSHEET_BYTES } from '../../../shared/contracts';
+import { createWorkbook, MAX_SPREADSHEET_BYTES, validateData } from '../../../shared/contracts';
 import { MAX_FILE_BYTES } from '../../../shared/file-contracts';
-import { csvDelimiter, parseCsv } from '../../../shared/csv';
+import { csvDelimiter, parseCsv, toCsv } from '../../../shared/csv';
 import { mountApp } from '../../../shared/ui';
 import { exportXlsx, importXlsx } from './xlsx';
 import { writebackXlsx } from './xlsx-writeback';
 import { ViewStorage } from './view-storage';
+import { offlineLocales, offlinePresets, withOfflineSheetLimits } from './offline-presets';
+import { usedSheetBounds } from './text-exchange';
+import { offlineFormulaFunctions } from './offline-formulas';
+import { univerApplySchema, spreadsheetInspectSchema, normalizeSpreadsheetOperation, executeSpreadsheetOperation, inspectSpreadsheet, materializeWorkbook } from './operations';
 import {
-  spreadsheetApplySchema,
   readRangeSchema,
   readRange,
-  worksheet,
-  editValues,
 } from '../../../shared/spreadsheet';
 
 async function importSpreadsheetFile(file: File) {
@@ -54,17 +53,19 @@ mountApp(
     const { univer, univerAPI } = createUniver({
       override: [[ILocalStorageService, { useClass: ViewStorage }]],
       locale: app.getHostContext()?.locale?.startsWith('zh') ? LocaleType.ZH_CN : LocaleType.EN_US,
-      locales: { [LocaleType.ZH_CN]: zhCN, [LocaleType.EN_US]: enUS },
+      locales: offlineLocales,
       // NO_CALCULATION preserves Excel's cached results in read-only file previews.
       presets: [
-        UniverSheetsCorePreset({
+        withOfflineSheetLimits(UniverSheetsCorePreset({
           container: sheet,
           formula: {
+            function: offlineFormulaFunctions,
             initialFormulaComputing: initialDocument?.sourceFile
               ? CalculationMode.NO_CALCULATION
               : CalculationMode.WHEN_EMPTY,
           },
-        }),
+        })),
+        ...offlinePresets(),
       ],
     });
     let workbook: ReturnType<typeof univerAPI.createWorkbook> | undefined;
@@ -80,7 +81,7 @@ mountApp(
       if (!workbook) throw new Error('No workbook.');
       if (!initialDocument?.sourceFile || initialDocument.sourceFile.writable)
         await univerAPI.getFormula().onCalculationResultApplied(15000);
-      return workbook.save();
+      return materializeWorkbook(univerAPI);
     }
     return {
       async commitEdit() {
@@ -122,9 +123,23 @@ mountApp(
       },
       async describe() {
         if (!workbook || disposed) throw new Error('No active workbook.');
-        const data = workbook.save();
+        const data = await snapshotWorkbook();
         const active = workbook.getActiveSheet();
-        const range = active.getSelection()?.getActiveRange();
+        let range: ReturnType<typeof active.getRange> | null | undefined;
+        let selectionPending = false;
+        try { range = active.getSelection()?.getActiveRange(); }
+        catch (error) {
+          if (!(error instanceof Error) || !/^Range (?:is )?out of bounds\b/.test(error.message)) throw error;
+          // Native structural commands update selections on a throttled path.
+          // Describe a bounded primary cell until that update finishes; do not
+          // replace the selection or fail an already applied document edit.
+          const primary = active.getSelection()?.getCurrentCell();
+          const current = data.sheets[active.getSheetId()];
+          const row = Math.min(Math.max(0, primary?.actualRow ?? 0), current.rowCount! - 1);
+          const column = Math.min(Math.max(0, primary?.actualColumn ?? 0), current.columnCount! - 1);
+          range = active.getRange(row, column, 1, 1);
+          selectionPending = true;
+        }
         const rect = range?.getRange();
         const preview = readRange(
           data,
@@ -142,6 +157,7 @@ mountApp(
             columnCount: data.sheets[id].columnCount,
           })),
           activeSheetId: active.getSheetId(),
+          ...(selectionPending ? { selectionPending: true } : {}),
           preview,
           ...(rect
             ? {
@@ -165,31 +181,48 @@ mountApp(
       async query(input) {
         return readRange(await snapshotWorkbook(), readRangeSchema.parse(input));
       },
+      async inspect(input) {
+        return inspectSpreadsheet(await snapshotWorkbook(), spreadsheetInspectSchema.parse(input));
+      },
       async apply(input, unchanged) {
         if (!workbook || disposed) throw new Error('No active workbook.');
         if (initialDocument?.sourceFile && !initialDocument.sourceFile.writable)
           throw new Error('Read-only spreadsheet. Save a copy before editing.');
-        const patch = spreadsheetApplySchema.parse(input);
-        const target = worksheet(workbook.save(), patch.sheetId);
-        if (
-          patch.cells.some(cell => cell.row >= target.rowCount || cell.column >= target.columnCount)
-        )
-          throw new Error('Live edits must stay inside existing worksheet bounds.');
-        if (!unchanged()) throw new Error('CONFLICT: The editor changed before applying.');
+        const patch = univerApplySchema.parse(input);
+        const current = await snapshotWorkbook();
+        const operation = normalizeSpreadsheetOperation(current, patch.operation ?? { type: 'cells', sheetId: patch.sheetId, cells: patch.cells });
+        // Saved operations and live editing use the same bounded headless
+        // engine. The preview has no persistence side effects.
+        const preview = await app.callServerTool({ name: 'preview_spreadsheet_edit', arguments: { data: { workbook: current }, operation } });
+        if (preview.isError || !preview.structuredContent) throw new Error(preview.content?.filter(item => item.type === 'text').map(item => item.text).join('\n') || 'Spreadsheet operation failed validation.');
+        if (disposed || !unchanged()) throw new Error('CONFLICT: The editor changed before applying.');
         sheet.inert = true;
         try {
-          const applied = await univerAPI.executeCommand('sheet.command.set-range-values', {
-            unitId: workbook.getId(),
-            subUnitId: patch.sheetId,
-            value: editValues(patch.cells),
-          });
-          if (!applied) throw new Error('The spreadsheet rejected this edit.');
+          await executeSpreadsheetOperation(univerAPI, operation);
         } finally {
           sheet.inert = false;
         }
       },
-      async exportFile() {
-        const bytes = await exportXlsx(await snapshotWorkbook());
+      async exportFile(format = 'xlsx') {
+        const current = await snapshotWorkbook();
+        if (format === 'json') return { text: JSON.stringify(validateData('univer', { workbook: current })), extension: 'json', mimeType: 'application/json' };
+        if (format === 'csv' || format === 'tsv') {
+          const active = workbook!.getActiveSheet().getSheetId();
+          const cells = current.sheets[active].cellData ?? {};
+          const { lastRow, lastColumn } = usedSheetBounds(cells);
+          const matrix = Array.from({ length: lastRow + 1 }, (_, row) => Array.from({ length: lastColumn + 1 }, (_, column) => {
+            const cell = cells[row]?.[column];
+            return cell?.p?.body?.dataStream?.replace(/\r\n$/, '') ?? cell?.v ?? null;
+          }));
+          const output = format === 'csv' ? toCsv(matrix) : '\uFEFF' + matrix.map(row => row.map(value => {
+            const content = String(value ?? '');
+            const safe = typeof value === 'string' && /^[=+@-]/.test(content) ? `'${content}` : content;
+            return `"${safe.replaceAll('"', '""')}"`;
+          }).join('\t')).join('\r\n');
+          if (new TextEncoder().encode(output).byteLength > MAX_FILE_BYTES) throw new Error('Export exceeds 10 MiB. Export a smaller worksheet.');
+          return { text: output, extension: format, mimeType: format === 'csv' ? 'text/csv' : 'text/tab-separated-values' };
+        }
+        const bytes = await exportXlsx(current);
         let binary = '';
         for (const byte of bytes) binary += String.fromCharCode(byte);
         return {
@@ -220,11 +253,7 @@ mountApp(
         const sheet = current.sheets[current.sheetOrder[0]];
         const separator = /\.tsv$/i.test(source.name) ? '\t' : csvDelimiter(original);
         const line = original.includes('\r\n') ? '\r\n' : original.includes('\r') ? '\r' : '\n';
-        const maxRow = Math.max(-1, ...Object.keys(sheet.cellData ?? {}).map(Number));
-        const maxColumn = Math.max(
-          -1,
-          ...Object.values(sheet.cellData ?? {}).flatMap(row => Object.keys(row ?? {}).map(Number)),
-        );
+        const { lastRow: maxRow, lastColumn: maxColumn } = usedSheetBounds(sheet.cellData);
         const rows = Array.from({ length: maxRow + 1 }, (_, r) =>
           Array.from({ length: maxColumn + 1 }, (_, c) => {
             const cell = sheet.cellData?.[r]?.[c];
@@ -251,10 +280,17 @@ mountApp(
   {
     kind: 'univer',
     importFile: importSpreadsheetFile,
-    applySchema: spreadsheetApplySchema,
+    applySchema: univerApplySchema,
     querySchema: readRangeSchema,
+    inspectSchema: spreadsheetInspectSchema,
     accept: '.csv,.tsv,.json,.xlsx',
     spreadsheet: true,
     maxDocumentBytes: MAX_SPREADSHEET_BYTES,
+    exportFormats: [
+      { value: 'xlsx', zh: 'XLSX 工作簿', en: 'XLSX workbook' },
+      { value: 'csv', zh: 'CSV 当前工作表', en: 'CSV current sheet' },
+      { value: 'tsv', zh: 'TSV 当前工作表', en: 'TSV current sheet' },
+      { value: 'json', zh: '完整工作簿 JSON', en: 'Full workbook JSON' },
+    ],
   },
 );

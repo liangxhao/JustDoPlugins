@@ -28,7 +28,12 @@
     "start": "node dist/server.cjs"
   },
   "devDependencies": {
+    "@univerjs/preset-sheets-conditional-formatting": "1.1.0",
     "@univerjs/preset-sheets-core": "1.1.0",
+    "@univerjs/preset-sheets-data-validation": "1.1.0",
+    "@univerjs/preset-sheets-filter": "1.1.0",
+    "@univerjs/preset-sheets-find-replace": "1.1.0",
+    "@univerjs/preset-sheets-sort": "1.1.0",
     "@univerjs/presets": "1.1.0",
     "@univerjs/sheets-formula": "1.1.0",
     "exceljs": "4.4.0",

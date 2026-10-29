@@ -55,6 +55,31 @@ test('real XLSX preserves sheets, formulas, cached values, merges, styles, sizes
   }
 });
 
+test('XLSX exchange preserves hidden and resized blank rows without adding cell contents', async () => {
+  const data = await importXlsx(await spreadsheetFixture(), 'Blank metadata.xlsx');
+  const source = data.sheets[data.sheetOrder[0]];
+  source.rowData[10] = { hd: 1 };
+  source.rowData[11] = { h: 40 };
+  source.columnData[9] = { hd: 1 };
+  const before = structuredClone(data);
+  const bytes = await exportXlsx(data);
+  assert.deepEqual(data, before, 'Export must not add placeholder cells to the editable workbook');
+  const decoded = new ExcelJS.Workbook();
+  await decoded.xlsx.load(bytes);
+  const sheet = decoded.worksheets[0];
+  assert.equal(sheet.getRow(11).hidden, true);
+  assert.equal(sheet.getRow(12).height, 30);
+  assert.equal(sheet.getColumn(10).hidden, true);
+  assert.equal(sheet.getCell('A11').value, null);
+  const restored = await importXlsx(bytes, 'Restored metadata.xlsx');
+  const result = restored.sheets[restored.sheetOrder[0]];
+  assert.equal(result.rowData[10].hd, 1);
+  assert.equal(result.rowData[11].h, 40);
+  assert.equal(result.columnData[9].hd, 1);
+  assert.equal(result.cellData[10], undefined);
+  assert.equal(result.cellData[11], undefined);
+});
+
 test('rejects invalid, oversized, macro and forged ZIP sizes before parsing workbook XML', async () => {
   assert.throws(() => validateXlsxArchive(new Uint8Array(10)), /Invalid/);
   assert.throws(() => validateXlsxArchive(new Uint8Array(10 * 1024 * 1024 + 1)), /10 MiB/);
