@@ -9,6 +9,7 @@ const bundle = await build({
   stdin: {
     contents: `import {mountApp} from './shared/ui'; import {z} from 'zod';
 globalThis.startFixture = () => mountApp('Univer', async (container, changed) => {
+  container.append(document.createElement('fixture-editor-lifetime'));
   const input = document.createElement('input'); input.dataset.editor = '';
   container.append(input); let model = '';
   input.oninput = () => {
@@ -88,7 +89,16 @@ async function fixture({ draftOnly = false, queueMode = false, queueDelay = 3 } 
     snapshotCount: 0,
     commitLocks: [],
     readSecond: 0,
+    disconnectedEditors: 0,
   });
+  w.customElements.define(
+    'fixture-editor-lifetime',
+    class extends w.HTMLElement {
+      disconnectedCallback() {
+        w.disconnectedEditors++;
+      }
+    },
+  );
   const original = {
     id: crypto.randomUUID(),
     kind: 'univer',
@@ -244,6 +254,23 @@ test('incoming documents survive another operation acquiring the editor after id
     } finally {
       await f.close();
     }
+  }
+});
+
+test('a staged editor stays connected when it replaces the previous document', async () => {
+  const f = await fixture(),
+    { w } = f;
+  try {
+    assert.equal(
+      w.disconnectedEditors,
+      0,
+      'Initial presentation must not tear down the new renderer',
+    );
+    w.fixtureApp.ontoolresult({ structuredContent: { id: f.second.id, revision: 1 } });
+    await until(() => w.document.querySelector('.title').value === 'Second');
+    assert.equal(w.disconnectedEditors, 1, 'Only the previous editor may disconnect');
+  } finally {
+    await f.close();
   }
 });
 

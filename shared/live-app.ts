@@ -8,6 +8,7 @@ export interface LiveEditor {
   describe(): Promise<Record<string, unknown>>;
   apply(patch: Record<string, unknown>, unchanged: () => boolean): Promise<void>;
   query?(input: Record<string, unknown>): Promise<Record<string, unknown>>;
+  inspect?(input: Record<string, unknown>): Promise<Record<string, unknown>>;
 }
 export interface LiveState {
   document: AppDocument;
@@ -38,6 +39,7 @@ export function contextText(value: Record<string, unknown>) {
     sourceReadOnly,
     rowCount,
     activeSheetId,
+    activePanelId,
   } = value;
   return JSON.stringify({
     kind,
@@ -50,6 +52,7 @@ export function contextText(value: Record<string, unknown>) {
     sourceReadOnly,
     rowCount,
     activeSheetId,
+    activePanelId,
     previewOmitted: true,
   });
 }
@@ -61,6 +64,7 @@ export function registerLiveTools(
     kind: 'univer' | 'perspective';
     applySchema: z.ZodObject;
     querySchema?: z.ZodObject;
+    inspectSchema?: z.ZodObject;
     state(): LiveState;
     exclusive<T>(operation: () => Promise<T>): Promise<T>;
     commit(): Promise<void>;
@@ -247,6 +251,20 @@ export function registerLiveTools(
             ...value,
           }),
         );
+      },
+    );
+  if (options.inspectSchema)
+    tool(
+      `${prefix}_inspect`,
+      'Inspect the live workspace, source data, selection or supported rendering/style contracts. Includes unsaved edits; does not save.',
+      options.inspectSchema,
+      async input => {
+        await options.commit();
+        const state = options.state();
+        if (!state.editor.inspect) throw new Error('Inspection unavailable.');
+        const value = await state.editor.inspect(input);
+        if (!same(state)) throw new Error('CONFLICT: Editor changed during inspection.');
+        return result(boundedQueryResult({ documentId: state.document.id, ...value }));
       },
     );
   return {

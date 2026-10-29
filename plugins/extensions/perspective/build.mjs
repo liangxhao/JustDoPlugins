@@ -4,6 +4,19 @@ import { builtinModules, createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { build } from 'esbuild';
 
+/** Restrict the public distribution's auto-registration to offline renderers. */
+export function browserPlugins() {
+  return [{ name: 'offline-perspective-renderers', setup(builder) {
+    builder.onLoad({ filter: /[\\/]viewer-charts[\\/]dist[\\/]esm[\\/]perspective-viewer-charts\.js$/ }, async args => {
+      const contents = await readFile(args.path, 'utf8');
+      const auto = /([\w$]+)\(\);export\{/;
+      assert.ok(auto.test(contents), 'Upstream chart auto-registration changed.');
+      const names = ['X Bar','Y Bar','Y Line','Y Scatter','Y Area','X/Y Scatter','X/Y Line','Density','Treemap','Sunburst','Heatmap','Candlestick','OHLC'];
+      return { contents: contents.replace(auto, (_match, register) => `${register}(${names.map(name => JSON.stringify(name)).join(',')});export{`), loader: 'js', resolveDir: dirname(args.path) };
+    });
+  } }];
+}
+
 /** Relocate the pinned public Node distribution's WASM assets for offline use. */
 export async function buildAdditionalAssets(root, output) {
   const require = createRequire(import.meta.url);

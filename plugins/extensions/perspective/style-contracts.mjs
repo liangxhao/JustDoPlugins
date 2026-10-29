@@ -4,6 +4,8 @@ import { HTMLPerspectiveViewerWebGLPluginElement as ChartsPlugin } from '@perspe
 import charts from '@perspective-dev/viewer-charts/src/ts/plugin/charts.ts';
 import { DEFAULT_PLUGIN_CONFIG } from '@perspective-dev/viewer-charts/src/ts/charts/chart.ts';
 import { validateStyleFields } from '../../../shared/style-validation';
+import { analysisPlugins } from '../../../shared/analysis';
+import documentation from '@perspective-dev/viewer/dist/docs/perspective-docs.json';
 
 // Theme defaults only fill schema hints. Validation never creates a DOM,
 // renderer, network client or browser, and never changes the engine's globals.
@@ -107,4 +109,78 @@ export function validateStyles(config, types) {
     // those against the union too, without discarding the preserved settings.
     validateStyleFields(value, { fields: allColumnFields(type) });
   }
+}
+
+/** Labels and slots come from the same public registry as the viewer. */
+export function listAnalysisVisualizations() {
+  return analysisPlugins.map(name => {
+    const chart = charts.find(item => item.name === name);
+    return chart ? {
+      name,
+      category: chart.category,
+      columns: { initialCount: chart.initial.count, roles: chart.initial.names },
+      groupByRole: chart.group_by_role ?? 'Aggregation keys',
+      splitByRole: chart.split_by_role ?? 'Series',
+      connectsRowOrder: chart.connects_row_order ?? false,
+    } : {
+      name,
+      category: 'Grid',
+      columns: { initialCount: 0, roles: ['Columns'] },
+      groupByRole: 'Row groups',
+      splitByRole: 'Column groups',
+      connectsRowOrder: false,
+    };
+  });
+}
+
+export function inspectAnalysisStyles(config, types, column) {
+  const chart = charts.find(item => item.name === config.plugin);
+  const self = chart ? chartSelf(chart) : grid;
+  const pluginConfig = config.plugin_config ?? {};
+  const plugin = chart
+    ? proto.plugin_config_schema.call(self, config, pluginConfig)
+    : datagridPlugin.call(grid, config, { ...pluginConfig, zebra_rows: 1 });
+  let selected;
+  if (column !== undefined) {
+    if (!Object.hasOwn(types, column)) throw new Error(`Unknown styled analysis column: ${column}`);
+    const role = !config.columns || config.columns.includes(column) ? 'column'
+      : config.split_by?.includes(column) ? 'split_by'
+        : config.group_by?.includes(column) ? 'group_by' : 'column';
+    const group = chart?.initial.names[config.columns?.indexOf(column) ?? -1];
+    selected = chart
+      ? proto.column_config_schema.call(self, types[column], group, column,
+        config.columns_config?.[column] ?? {}, config, pluginConfig, role)
+      : datagridColumn.call(grid, types[column], undefined, column,
+        config.columns_config?.[column] ?? {}, config, pluginConfig, role);
+  }
+  return {
+    plugin: config.plugin ?? 'Datagrid',
+    pluginSchema: plugin,
+    ...(selected ? { column, columnSchema: selected } : {}),
+    themeDefaults: 'Schema hints use local defaults; the live viewer supplies its active theme values.',
+  };
+}
+
+/** Version-matched help comes from the public package, never a network request. */
+export function analysisReference(section, search = '', limit = 8) {
+  const names = section === 'windows'
+    ? ['Windows', 'WindowSpec', 'WindowSort', 'WindowSortDir', 'Aggregate']
+    : section === 'expressions' ? ['Expressions']
+      : ['Filter', 'FilterTerm', 'FilterReducer', 'Aggregate'];
+  const definitions = documentation.schemas.ViewerConfigUpdate.definitions ?? {};
+  const schema = Object.fromEntries(names.filter(name => Object.hasOwn(definitions, name))
+    .map(name => [name, definitions[name]]));
+  const needle = search.toLowerCase();
+  const category = section === 'configuration' ? /config|filter|aggregate|sort/i
+    : section === 'windows' ? /window/i : /expression|exprtk/i;
+  const matches = documentation.chunks.filter(chunk => category.test(`${chunk.title} ${chunk.path}`)
+    && (!needle || `${chunk.title} ${chunk.path} ${chunk.text}`.toLowerCase().includes(needle)));
+  return {
+    schema,
+    entries: matches.slice(0, limit).map(chunk => ({ title: chunk.title, path: chunk.path,
+      text: chunk.text.slice(0, 3000), truncated: chunk.text.length > 3000 })),
+    totalEntries: matches.length,
+    hasMore: matches.length > limit,
+    source: '@perspective-dev/viewer/dist/docs/perspective-docs.json',
+  };
 }

@@ -17,7 +17,7 @@ export interface Editor extends LiveEditor {
   load(document: AppDocument): Promise<void>;
   commitEdit?(): Promise<void>;
   snapshot(): Promise<Record<string, unknown>>;
-  exportFile(): Promise<
+  exportFile(format?: string): Promise<
     ({ text: string } | { blob: string }) & { extension: string; mimeType: string }
   >;
   serializeSource?(source: {
@@ -99,12 +99,15 @@ export function mountApp(
     app: App,
     initialDocument?: AppDocument,
     requestContext?: () => void,
+    runAction?: (operation: () => Promise<void>) => Promise<void>,
   ) => Promise<Editor>,
   options: {
     kind: Kind;
     importFile(file: File): Promise<Record<string, unknown>>;
     applySchema: z.ZodObject;
     querySchema?: z.ZodObject;
+    inspectSchema?: z.ZodObject;
+    exportFormats?: { value: string; zh: string; en: string }[];
     accept?: string;
     spreadsheet?: boolean;
     maxDocumentBytes?: number;
@@ -146,16 +149,27 @@ export function mountApp(
   const title = document.querySelector<HTMLInputElement>('.title')!;
   const status = document.querySelector<HTMLElement>('#status')!;
   const file = document.querySelector<HTMLInputElement>('#file')!;
+  const exportFormat = options.exportFormats ? document.createElement('select') : undefined;
+  if (exportFormat) {
+    exportFormat.dataset.exportFormat = '';
+    document.querySelector('[data-action="export"]')!.before(exportFormat);
+  }
   document.querySelector('.toolbar-actions')!.addEventListener('focusin', event => {
-    if (document.documentElement.hasAttribute('data-shared-header')) {
-      (event.target as HTMLElement).scrollIntoView({ block: 'nearest', inline: 'nearest' });
-    }
+    (event.target as HTMLElement).scrollIntoView({ block: 'nearest', inline: 'nearest' });
   });
   file.accept = options.accept ?? file.accept;
   function labels() {
+    if (exportFormat) {
+      const previous = exportFormat.value;
+      exportFormat.setAttribute('aria-label', locale === 'zh' ? '导出格式' : 'Export format');
+      exportFormat.replaceChildren(...options.exportFormats!.map(format => new Option(format[locale], format.value)));
+      if (previous) exportFormat.value = previous;
+    }
     for (const button of document.querySelectorAll<HTMLButtonElement>('button[data-action]')) {
       const action = button.dataset.action as keyof typeof strings.zh;
-      const caption =
+      const caption = action === 'export' && exportFormat
+        ? `${locale === 'zh' ? '导出' : 'Export'} ${exportFormat.value === 'analysis' ? (locale === 'zh' ? '完整分析文档' : 'analysis document') : exportFormat.value.toUpperCase()}`
+        :
         action === 'import' && options.spreadsheet
           ? t('importSpreadsheet')
           : action === 'export' && options.spreadsheet
@@ -172,6 +186,7 @@ export function mountApp(
         : caption;
     }
   }
+  exportFormat?.addEventListener('change', labels);
   labels();
   document.addEventListener(
     'keydown',
@@ -354,6 +369,7 @@ export function mountApp(
         () => {
           if (editor === next) requestContext();
         },
+        run,
       );
       await next.load(value);
       // Capture the source baseline before exposing the new canvas. Toggling
@@ -373,7 +389,11 @@ export function mountApp(
       await next.dispose();
       return;
     }
-    container.replaceChildren(stage);
+    // Keep the already mounted stage in place. Re-inserting it would fire
+    // disconnectedCallback and destroy custom-element chart renderers.
+    for (const child of Array.from(container.children)) {
+      if (child !== stage) child.remove();
+    }
     stage.style.visibility = '';
     library.hidden = true;
     current = value;
@@ -527,6 +547,7 @@ export function mountApp(
     kind: options.kind,
     applySchema: options.applySchema,
     querySchema: options.querySchema,
+    inspectSchema: options.inspectSchema,
     // Prevent a new, uncommitted cell edit during asynchronous calculation or
     // context synchronization. The toolbar lock alone does not cover the canvas.
     exclusive: operation => exclusive(() => withInputLocked(operation)),
@@ -677,7 +698,7 @@ export function mountApp(
         }
         if (action === 'export' && current && editor) {
           await editor.commitEdit?.();
-          const output = await editor.exportFile();
+          const output = await editor.exportFile(exportFormat?.value);
           const name =
             title.value.replace(/\.(xlsx|csv|tsv)$/i, '').replace(/[<>:"/\\|?*\x00-\x1f]/g, '_') ||
             label;

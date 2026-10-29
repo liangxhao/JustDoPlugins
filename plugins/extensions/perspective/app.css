@@ -1,0 +1,12 @@
+.analysis-editor { display: flex; flex-direction: column; }
+.analysis-controls { flex: none; display: flex; align-items: center; gap: 6px; padding: 5px 8px; border-bottom: 1px solid var(--line); overflow-x: auto; }
+.analysis-controls button, .analysis-controls select, select[data-export-format] { font: inherit; color: inherit; background: var(--surface); border: 1px solid var(--line); border-radius: 5px; padding: 5px 7px; min-height: 28px; }
+.analysis-controls button { flex: none; cursor: pointer; }
+.analysis-controls select { max-width: 190px; min-width: 90px; }
+.analysis-controls button.selected { color: var(--accent); border-color: var(--accent); }
+.analysis-controls :focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.analysis-controls button:disabled { opacity: .4; cursor: default; }
+#editor .analysis-editor perspective-viewer { flex: 1; height: 0; min-height: 0; }
+.analysis-feedback:empty { display: none; }
+.analysis-feedback { flex: none; padding: 10px; color: var(--muted); }
+.analysis-export-viewer { position: fixed; left: -10000px; top: 0; visibility: hidden; }

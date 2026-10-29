@@ -187,6 +187,8 @@ export async function verifyLiveApp(page, frame, client, name) {
     businessCalls,
     'Live tools must not re-run server business tools',
   );
+  if (name === 'perspective')
+    assert.ok(await page.evaluate(() => globalThis.inspectionCalls > 0), 'Live updates must reuse the read-only local engine/style preflight');
   if (name === 'perspective') {
     const stamp = (await call('analysis_snapshot')).structuredContent;
     const invalidStyle = await call('analysis_apply', {

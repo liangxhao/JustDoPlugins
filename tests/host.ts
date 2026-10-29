@@ -23,10 +23,12 @@ const bridge = new AppBridge(
     },
   },
 );
-const fixture = window as unknown as { businessCalls: number };
+const fixture = window as unknown as { businessCalls: number; inspectionCalls: number };
 fixture.businessCalls = 0;
+fixture.inspectionCalls = 0;
 bridge.oncalltool = async params => {
-  fixture.businessCalls++;
+  if (['inspect_analysis', 'list_visualizations'].includes(params.name)) fixture.inspectionCalls++;
+  else fixture.businessCalls++;
   const response = await fetch('/tool', { method: 'POST', body: JSON.stringify(params) });
   return response.json();
 };

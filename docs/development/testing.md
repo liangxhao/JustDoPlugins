@@ -28,6 +28,18 @@ npm run pack:apps
 单独排查时可运行 `node --test tests/xlsx-writeback.test.mjs`，或用 `npm run test:ui -- univer-write` 验证指定浏览器场景。
 浏览器模式还包括 `univer`、`perspective`、`univer-file` 和 `perspective-file`。
 
+需要重现 Perspective 的完整非地图图集时，在最新构建后运行：
+
+```sh
+node tests/perspective-gallery.mjs
+```
+
+仅排查一个样例时可传 fixture ID，例如 `node tests/perspective-gallery.mjs density`。样例定义在 `tests/fixtures/perspective-gallery.mjs`，全部为确定性的合成演示数据。完整运行覆盖 Datagrid 与 13 个非地图图表：真实 MCP 创建、界面保存、重开后的当前查询、导出前屏幕绘图区像素、原生导出及 App CSV 下载；截图、原生图像、可导入 JSON、结果 CSV、报告和 HTML 图集保存在 `test-results/ui/perspective-gallery/`，不提交 Git。
+
+图集检查绘图区而非仅检查图例、插件名称或原生导出；后者可能触发上游重绘，不能证明首次显示正常。它同时拒绝浏览器错误与公网请求。三种地图因缺少离线底图明确排除，14 个展示器覆盖不等于上游全部功能接入。普通五模式验证仍保留原职责，图集按图表或生命周期变更另行运行。
+
+`node tests/perspective-offline.mjs` 从真实 MCP 导入合成 NDJSON 与显式日期/整数类型，运行普通和减少动画两种浏览器设置，覆盖多面板 agent 创建、真实单元格点击联动、手动面板管理、旧内容戳冲突、保存重开及空面板恢复；普通模式还检查各类 App 下载并真实解码 Arrow/PNG。报告与截图输出到 `test-results/ui/perspective-offline/`。PNG 导出必须保留主视图的联动过滤，不能仅验证图片字节。
+
 `tests/live-app.test.mjs` 验证内容戳、当前实例、同步失败、同步中手改、重复和未知操作、关闭以及摘要上限。`tests/live-app-checks.mjs` 通过真实 AppBridge 发现并调用 App 工具，验证未保存状态、输入提交、当前编辑器保留、Univer 稀疏修改与一次撤销，以及 Perspective 实际过滤聚合结果；同时核对文档库及业务调用计数没有被这些操作改变。`perspective-file` 覆盖 TSV 只读来源、分析配置及保存副本，`tests/loopback.test.mjs` 验证实际禁止端口释放、重新绑定和重试上限。
 `tests/ui-state.test.mjs` 使用真实共享界面逻辑，覆盖保存期间已提交或尚未提交的输入、画布锁定、通知忙状态交接和导航等待。服务测试从复制到临时目录的独立产物运行，验证真实引擎拒绝无效表达式/筛选/聚合、失败后继续处理合法请求、校验后并发 revision 冲突，以及长文本分页的 UTF-8 上限和配置省略。
 服务回归还覆盖取消创建/保存不落库、有效与无效图表样式、显式列类型及全空数值列。真实分析界面通过与 Datagrid 相同的公开表更新接口验证数据编辑标脏、源数据保存、全空列类型保持和重新打开，使用实际插件规范校验样式。

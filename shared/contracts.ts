@@ -1,5 +1,9 @@
 import { z } from 'zod';
-import { analysisSchema, validateAnalysisConfig } from './analysis';
+import { normalizeAnalysisRows, validateAnalysisConfig } from './analysis';
+import {
+  activeAnalysisConfig,
+  normalizeAnalysisWorkspace,
+} from '../plugins/extensions/perspective/workspace';
 
 export const MAX_DOCUMENT_BYTES = 2 * 1024 * 1024;
 export const MAX_SPREADSHEET_BYTES = 8 * 1024 * 1024;
@@ -40,12 +44,17 @@ export function validateData(kind: Kind, data: unknown): Record<string, unknown>
       `Document exceeds ${maxBytes / 1024 / 1024} MiB. Split it into smaller documents.`,
     );
   if (kind === 'perspective') {
-    const rows = rowsSchema.parse(record.rows);
-    const schema = analysisSchema(rows, record.schema);
+    const { rows, schema } = normalizeAnalysisRows(rowsSchema.parse(record.rows), record.schema);
+    const workspace = record.workspace === undefined
+      ? undefined
+      : normalizeAnalysisWorkspace(record.workspace, rows, schema);
     const normalized = {
       rows,
       schema,
-      config: validateAnalysisConfig(record.config, rows, schema),
+      config: workspace
+        ? activeAnalysisConfig({ rows, schema, workspace })
+        : validateAnalysisConfig(record.config, rows, schema),
+      ...(workspace ? { workspace } : {}),
     };
     if (new TextEncoder().encode(JSON.stringify(normalized)).byteLength > maxBytes)
       throw new Error(

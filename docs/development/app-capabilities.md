@@ -29,9 +29,10 @@ stdio MCP 工具操作本地已保存文档。App 工具属于已加载的浏览
 | ------------------ | ---------------------- | --------------------------------------------------- |
 | 创建持久文档       | `create_spreadsheet`   | `analyze_data`                                      |
 | 局部读取已保存数据 | `read_range`           | `read_analysis`                                     |
-| 更新已保存数据     | `update_cells`         | `replace_data`、`append_data`、`configure_analysis` |
+| 更新已保存数据     | `update_cells`         | `replace_data`、`append_data`、`configure_analysis`、`configure_workspace` |
 | 当前实例快照       | `spreadsheet_snapshot` | `analysis_snapshot`                                 |
 | 当前实例查询       | `spreadsheet_query`    | `analysis_query`                                    |
+| 元数据与精确内容   | `read_range`          | `list_visualizations`、`inspect_analysis`、`analysis_inspect` |
 | 修改当前实例       | `spreadsheet_apply`    | `analysis_apply`                                    |
 | 发送前准备         | `prepare_context`      | `prepare_context`                                   |
 
@@ -61,7 +62,7 @@ snapshot 无参数，返回 `structuredContent`：`kind`（`univer.snapshot.v1` 
 
 Univer 的 patch 是 `{ "sheetId": "sheet1", "cells": [{ "row": 1, "column": 1, "value": 120 }] }`。行列从零开始，每项只能指定 `value` 或以 `=` 开头的 `formula`；一次最多 1000 个不重复单元格，均在现有工作表范围内。一条稀疏命令保留其它单元格与样式，可以一次撤销；只读文件拒绝修改。
 
-Perspective 的 patch 是 `{ "config": { "group_by": ["部门"], "columns": ["金额"], "aggregates": { "金额": "sum" } } }`。未提供的配置保留，数组替换对应设置。先用真实引擎校验查询配置，再更新同一 viewer；源数据及当前文件保持不变。
+Perspective 的 patch 支持 `{ "panelId": "overview", "config": { "group_by": ["部门"], "columns": ["金额"], "aggregates": { "金额": "sum" } } }`。未提供配置保留，数组替换对应设置。`workspace` 可管理最多 8 个同源面板、拆分/标签布局、当前面板、主图点击联动、全局过滤及共享配色；显式 `panels` 替换完整面板集，其余变更保留现有面板。`cells`、`append`、`rows` 可修改现有类型的源记录。先预检整个工作区，再更新同一 viewer；当前文件不写回。完整契约见插件详细说明。
 
 成功返回 `{ "operationId": "…", "status": "applied", "snapshot": { … } }`，表示当前编辑器已经应用。修改仍为未保存状态，需要主动保存到文档库或经批准写回源文件。冲突、不可编辑、关闭或未知结果返回 `isError: true`；每个实例最多接受 128 个操作 ID，保留期间同一 ID 不能再次执行。派发后响应丢失也不能重放，先读取当前内容核对结果。
 
@@ -71,7 +72,7 @@ Perspective 的 patch 是 `{ "config": { "group_by": ["部门"], "columns": ["�
 
 `spreadsheet_query` 接收 `sheetId`、`startRow`、`startColumn`、`rowCount`、`columnCount`；默认 20×10，最大 100×20。结果包含实际范围、值和显式公式。它先提交正在编辑的单元格并等待公式计算。
 
-`analysis_query` 接收 `offset`、`limit`、`columnOffset`、`columnLimit`；默认 25×20，最大 100×20。查询当前实际筛选、分组及聚合后的引擎 view，返回 `totalRows`、`totalColumns`、分页信息、`rows` 和是否还有更多行列。分组路径为引擎的 `__ROW_PATH__`，不要当成源数据字段。单次查询最多 256 KiB，超出时明确要求缩小窗口。
+`analysis_query` 接收可选 `panelId` 及行列窗口；默认 25×20，最大 100×20。查询当前实际筛选、点击联动、分组及聚合后的引擎 view，返回 `totalRows`、`totalColumns`、分页信息、`rows` 和是否还有更多行列。分组路径为引擎的 `__ROW_PATH__`，不要当成源数据字段。单次查询最多 256 KiB，超出时明确要求缩小窗口。`analysis_inspect` 可读取完整未保存工作区、源数据页、选区、离线图表角色与动态样式/计算规范；样式参考通过无持久化的服务端只读预检复用真实引擎，不建立第二套业务存储。
 已保存的 `read_range` 和 `read_analysis` 同样按完整结构化结果限制为 256 KiB；后者的 `includeConfig: false` 可以省略大型配置，同时返回 `configOmitted: true`。行数上限不能替代 UTF-8 字节上限。
 
 ### 发送前准备

@@ -17,6 +17,10 @@ for (const name of requested ? [requested] : apps) {
   const output = join(root, 'plugins', 'extensions', name, 'dist');
   await rm(output, { recursive: true, force: true });
   await mkdir(output, { recursive: true });
+  const hook = `plugins/extensions/${name}/build.mjs`;
+  const pluginBuild = existsSync(join(root, hook))
+    ? await import(pathToFileURL(join(root, hook)).href)
+    : undefined;
   const browser = await build({
     absWorkingDir: root,
     entryPoints: [`plugins/extensions/${name}/app.ts`],
@@ -37,6 +41,7 @@ for (const name of requested ? [requested] : apps) {
     },
     define: { 'process.env.NODE_ENV': '"production"' },
     metafile: true,
+    plugins: pluginBuild?.browserPlugins?.() ?? [],
   });
   const js = browser.outputFiles
     .find(file => file.path.endsWith('.js'))
@@ -74,9 +79,8 @@ for (const name of requested ? [requested] : apps) {
       metafile: true,
     });
   }
-  const hook = `plugins/extensions/${name}/build.mjs`;
-  const additional = existsSync(join(root, hook))
-    ? await (await import(pathToFileURL(join(root, hook)).href)).buildAdditionalAssets(root, output)
+  const additional = pluginBuild
+    ? await pluginBuild.buildAdditionalAssets(root, output)
     : { assets: [], inputs: [] };
   const licenses = join(output, 'licenses');
   await rm(licenses, { recursive: true, force: true });

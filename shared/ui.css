@@ -51,8 +51,12 @@ body > header {
   display: flex;
   align-items: center;
   gap: 6px;
-  flex-shrink: 0;
+  flex-shrink: 1;
+  min-width: 32px;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
+.toolbar-actions > * { flex-shrink: 0; }
 body > header button[data-action='rename'] {
   display: none;
 }
@@ -137,6 +141,7 @@ body > header svg {
   max-width: 100%;
   padding: 0 6px 2px;
 }
+#status.important { flex-shrink: 0; }
 :root:not([data-shared-header]) body > header:has(#status.error) {
   height: auto;
   min-height: 46px;

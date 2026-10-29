@@ -80,7 +80,7 @@ for (const name of ['univer', 'perspective']) {
       if (name === 'perspective') {
         const fileEntry = tools.find(tool => tool.name === 'preview_file');
         assert.deepEqual(fileEntry._meta['openai/ui'].entrypoints, [
-          { type: 'file', extensions: ['.csv', '.tsv', '.json'] },
+          { type: 'file', extensions: ['.csv', '.tsv', '.json', '.ndjson', '.jsonl', '.arrow', '.feather'] },
         ]);
       }
       const create =
