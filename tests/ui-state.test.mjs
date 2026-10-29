@@ -16,12 +16,16 @@ globalThis.startFixture = () => mountApp('Univer', async (container, changed) =>
     if (!globalThis.draftOnly) { model = input.value; changed(); }
   };
   return {
-    async load(doc) { model = input.value = doc.data.workbook.sheets.sheet1.cellData[0][0].v; },
+    async load(doc) {
+      if (globalThis.failNextLoad) { globalThis.failNextLoad = false; throw new Error('Fixture load failure'); }
+      model = input.value = doc.data.workbook.sheets.sheet1.cellData[0][0].v;
+    },
     async commitEdit() {
       globalThis.commitLocks.push(container.inert === true);
       if (model !== input.value) { model = input.value; changed(); }
     },
     async snapshot() {
+      if (globalThis.failSnapshots) throw new Error('Fixture snapshot failure');
       globalThis.snapshotCount++;
       if (globalThis.holdSnapshot || (globalThis.queueMode && globalThis.snapshotCount === 2)) {
         globalThis.holdSnapshot = false;
@@ -32,12 +36,17 @@ globalThis.startFixture = () => mountApp('Univer', async (container, changed) =>
       }}}};
     },
     async describe() {
+      const selection = globalThis.selectedCell;
+      if (globalThis.holdDescription) {
+        globalThis.holdDescription = false;
+        await new Promise(resolve => globalThis.releaseDescription = resolve);
+      }
       if (globalThis.queueMode && !globalThis.scheduled) {
         globalThis.scheduled = true;
         const next = n => queueMicrotask(() => n ? next(n - 1) : globalThis.startConcurrent());
         next(globalThis.queueDelay);
       }
-      return {};
+      return {selection};
     },
     async apply() {},
     async exportFile() { return {text:'',extension:'csv',mimeType:'text/csv'}; },
@@ -76,7 +85,7 @@ const until = async predicate => {
   }
   throw new Error('Fixture did not reach the expected state.');
 };
-async function fixture({ draftOnly = false, queueMode = false, queueDelay = 3 } = {}) {
+async function fixture({ draftOnly = false, queueMode = false, queueDelay = 3, contextEnabled = false, holdDescription = false } = {}) {
   const dom = new JSDOM('<!doctype html>', { url: 'http://127.0.0.1', runScripts: 'outside-only' });
   const w = dom.window;
   w.TextEncoder = TextEncoder;
@@ -90,6 +99,9 @@ async function fixture({ draftOnly = false, queueMode = false, queueDelay = 3 } 
     commitLocks: [],
     readSecond: 0,
     disconnectedEditors: 0,
+    selectedCell: 'A1',
+    holdDescription,
+    sharedContexts: [],
   });
   w.customElements.define(
     'fixture-editor-lifetime',
@@ -128,13 +140,21 @@ async function fixture({ draftOnly = false, queueMode = false, queueDelay = 3 } 
       tools.set(name, handler);
     },
     getHostCapabilities() {
-      return {};
+      return contextEnabled ? { updateModelContext: { text: {} } } : {};
     },
     getHostContext() {
       return { locale: 'zh-CN' };
     },
     async connect() {},
+    async updateModelContext(params) {
+      w.sharedContexts.push(JSON.parse(params.content[0].text));
+    },
     async callServerTool({ name, arguments: input }) {
+      if (name === 'new_document') {
+        w.createdDocuments = (w.createdDocuments ?? 0) + 1;
+        const { data, ...reference } = second;
+        return { structuredContent: structuredClone(reference) };
+      }
       if (name === 'read_document') {
         if (input.id === second.id) {
           w.readSecond++;
@@ -177,6 +197,7 @@ async function fixture({ draftOnly = false, queueMode = false, queueDelay = 3 } 
       w.releaseSnapshot?.();
       w.releaseSave?.();
       w.releaseRead?.();
+      w.releaseDescription?.();
       await w.fixtureApp.onteardown();
       w.close();
     },
@@ -293,4 +314,96 @@ test('navigation locks the old editor between leave confirmation and the arrivin
   } finally {
     await f.close();
   }
+});
+
+test('a late background description cannot replace explicitly prepared context after a selection change', async () => {
+  const f = await fixture({ contextEnabled: true, holdDescription: true }), { w, tools } = f;
+  try {
+    await until(() => w.releaseDescription);
+    w.selectedCell = 'B2';
+    const prepared = await tools.get('prepare_context')({});
+    assert.ok(!prepared.isError);
+    assert.equal(w.sharedContexts.length, 1);
+    assert.equal(w.sharedContexts[0].selection, 'B2');
+    assert.equal(w.sharedContexts[0].contentStamp, prepared.structuredContent.contentStamp);
+    w.releaseDescription();
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal(w.sharedContexts.length, 1, 'The old A1 summary must not overwrite a confirmed B2 preparation');
+  } finally { await f.close(); }
+});
+
+test('a confirmed copy reports its failed opening while retaining the previous editor', async () => {
+  const f = await fixture(), { w, tools } = f;
+  try {
+    const before = (await tools.get('spreadsheet_snapshot')({})).structuredContent;
+    const saving = tools.get('spreadsheet_save')({ operationId: 'copy-open', documentId: before.documentId,
+      baseContentStamp: before.contentStamp, mode: 'copy' });
+    await until(() => w.saving);
+    w.failNextLoad = true;
+    w.releaseSave();
+    const result = await saving;
+    assert.ok(!result.isError);
+    assert.equal(result.structuredContent.status, 'copied');
+    assert.notEqual(result.structuredContent.savedDocument.id, before.documentId);
+    assert.equal(result.structuredContent.snapshot.documentId, before.documentId);
+    assert.equal(w.document.querySelector('[data-editor]').value, 'before');
+    assert.equal(w.document.querySelector('#status').classList.contains('error'), true);
+    assert.match(w.document.querySelector('#status').textContent, /副本已保存/);
+    assert.equal(w.document.querySelector('.title').disabled, false);
+  } finally { await f.close(); }
+});
+
+test('manual creation resolves a view reference without replaying the creation tool', async () => {
+  const f = await fixture(), { w, tools } = f;
+  try {
+    w.document.querySelector('[data-action="new"]').click();
+    await until(() => w.document.querySelector('.title').value === 'Second' && !w.document.querySelector('.title').disabled);
+    assert.equal(w.createdDocuments, 1);
+    assert.equal(w.readSecond, 1);
+    const current = (await tools.get('spreadsheet_snapshot')({})).structuredContent;
+    assert.equal(current.documentId, f.second.id);
+    assert.equal(current.dirty, false);
+  } finally { await f.close(); }
+});
+
+test('live save permits later uncommitted typing and reports that draft as still unsaved', async () => {
+  const f = await fixture({ draftOnly: true }), { w, tools } = f;
+  try {
+    const before = (await tools.get('spreadsheet_snapshot')({})).structuredContent;
+    const saving = tools.get('spreadsheet_save')({ operationId: 'live-save-draft', documentId: before.documentId,
+      baseContentStamp: before.contentStamp });
+    await until(() => w.saving);
+    const input = w.document.querySelector('[data-editor]');
+    assert.notEqual(input.parentElement.inert, true, 'Live saving must release the canvas during persistence');
+    input.value = 'later draft';
+    input.dispatchEvent(new w.Event('input', { bubbles: true }));
+    w.releaseSave();
+    const result = await saving;
+    assert.ok(!result.isError);
+    assert.equal(result.structuredContent.status, 'saved');
+    assert.equal(result.structuredContent.snapshot.dirty, true);
+    assert.equal(result.structuredContent.snapshot.documentId, before.documentId);
+    assert.equal(w.persisted.data.workbook.sheets.sheet1.cellData[0][0].v, 'before');
+    assert.equal(input.value, 'later draft');
+  } finally { await f.close(); }
+});
+
+test('a confirmed live save remains successful when the current draft cannot be read afterwards', async () => {
+  const f = await fixture(), { w, tools } = f;
+  try {
+    const before = (await tools.get('spreadsheet_snapshot')({})).structuredContent;
+    const saving = tools.get('spreadsheet_save')({ operationId: 'saved-unreadable', documentId: before.documentId,
+      baseContentStamp: before.contentStamp });
+    await until(() => w.saving);
+    w.failSnapshots = true;
+    w.releaseSave();
+    const result = await saving;
+    assert.ok(!result.isError);
+    assert.equal(result.structuredContent.status, 'saved');
+    assert.equal(result.structuredContent.savedDocument.revision, 2);
+    assert.equal(result.structuredContent.snapshotUnavailable, true);
+    assert.equal(w.persisted.data.workbook.sheets.sheet1.cellData[0][0].v, 'before');
+    assert.match(w.document.querySelector('#status').textContent, /已保存/);
+    assert.equal(w.document.querySelector('.title').disabled, false);
+  } finally { await f.close(); }
 });

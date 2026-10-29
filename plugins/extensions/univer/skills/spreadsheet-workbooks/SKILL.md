@@ -30,6 +30,15 @@ or assume the plugin is enabled. Use real user data and clearly label examples.
   A native command preserves the editor and its undo history; use one fresh stamp
   for each operation. Copying a sheet uses the engine's generated ID and name:
   discover the actual new ID in the returned snapshot before further edits.
+- When the user asks to save, call the admitted editor's `spreadsheet_save`
+  with its exact documentId, a fresh baseContentStamp and a new operationId.
+  Default mode `document` saves that local document; explicit mode `copy`
+  creates a local copy. Source files allow copy only through this tool; their
+  approved source-file write remains a separate UI action. Read savedDocument
+  and snapshot separately: later user edits can remain dirty, and a saved copy
+  need not replace the current editor. snapshotUnavailable after status saved
+  still confirms persistence. Never rebuild a workbook from its bounded preview
+  or repeat an unknown save. On the library screen there is no active document.
 - Formatting uses the bounded public style fields. Example: style
   {bl:1,bg:{rgb:'#E8F0FE'},n:{pattern:'#,##0.00'}}. A range style operation preserves
   existing values and unspecified styles. Merges reject discarded cell contents

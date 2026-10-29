@@ -13,6 +13,7 @@ XLSX 转换由随包提供的 ExcelJS 4.4.0 完成，不连接在线转换服务
 
 启用后附带的 MCP 服务由 OpenClaw 管理，可通过手动应用入口或模型工具打开。
 本地文档库支持新建、导入和重新打开表格。
+首页提供带文字的新建、导入入口、支持格式提示和文档搜索；未打开文档时标题只读，保存、导出和重新读取不可用，避免产生无法保存的编辑状态。
 停用或卸载父扩展会撤下 MCP 服务和应用入口，已保存的用户文档保留。
 服务和工具提供随包的明暗 SVG 图标；原生 `skills/spreadsheet-workbooks/` 帮助模型按需发现表格任务与实际工具，随扩展启停，不改变宿主工具授权。
 
@@ -81,6 +82,7 @@ CSV 导入将以 `=` 开头的文本保持为文本。模型写公式必须显�
 | `spreadsheet_query`    | 读取当前值与公式；参数 `sheetId`、`startRow`、`startColumn`、`rowCount`、`columnCount`，默认 20×10，最大 100×20                             |
 | `spreadsheet_inspect`  | `kind: capabilities/range/sheets/resources`；发现操作规范，读取当前未保存内容及样式、布局和资源摘要 |
 | `spreadsheet_apply`    | 按内容戳在同一实例执行一次操作；兼容原有单元格批量更新，保持原生撤销，不自动保存 |
+| `spreadsheet_save`     | 按当前内容戳保存本地文档，或用 `mode: copy` 创建本地副本；不直接写回源文件 |
 
 apply 参数为 `operationId`（本次唯一，1–128 字符）、`documentId`、`baseContentStamp` 及 `patch`。例如：
 
@@ -133,7 +135,12 @@ apply 参数为 `operationId`（本次唯一，1–128 字符）、`documentId`�
 
 成功结果为 `{ "operationId": "…", "status": "applied", "snapshot": { … } }`，说明当前界面已应用，仍须主动保存。错误目标、手改、过期戳、重复操作及已关闭实例返回 `isError: true`，未知结果不自动重放。每个编辑器保留最近 8 个内容戳和最多 128 个操作 ID；重新打开文档后使用新戳。
 
+用户要求保存时，先读取新快照，再调用 `spreadsheet_save`，传入 `operationId`、`documentId`、`baseContentStamp` 和可选 `mode: document/copy`（默认 `document`）。它复用界面保存的 revision 比较和输入捕获；保存等待期间的新编辑保留为未保存。结果包含 `status: saved/copied`、准确的 `savedDocument: { id, title, revision }` 和当前 `snapshot`。副本保存后若有新增编辑，快照可能仍指向原文档，不能把两者混为一谈。持久化已确认但后续读取失败时返回 `snapshotUnavailable: true`，仍保留保存成功的事实，不能因此重复写入。
+
+源文件必须显式使用 `mode: copy` 保存本地副本；直接写回继续使用原有界面保存及原生审批、ETag 和备份流程。过期内容戳、重复操作或未知保存结果均不得自动重放。Agent 不应从有界预览拼出完整工作簿覆盖保存。
+
 快照预览与对话上下文最多 16000 UTF-8 字节，长字符串最多 240 字符；必要时返回 `previewOmitted: true`，精确值通过 query 获取。单次 query 结果最多 256 KiB，超出时缩小窗口。文件只同步名称、数据与只读状态，资源令牌和 ETag 不进入上下文。发送前准备失败时不能宣称已同步，也不会保存或发送消息。
+返回文档库后同步 `screen: library`、`activeDocument: null`，清除旧文档目标；后台摘要和显式准备串行发送，迟到的旧摘要不能覆盖已确认的新选区或首页状态。
 当前工具在提交输入前暂时锁定编辑区，并在计算、校验、应用或上下文同步完成后恢复，防止等待期间的新单元格输入被覆盖。切换文档也保持该保护，旧编辑器在新内容加载成功前保留。
 
 ## 工作区文件预览与源文件保存

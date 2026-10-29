@@ -16,6 +16,11 @@ export const analysisInputSchema = z.object({
 }).strict();
 export type AnalysisInput = z.infer<typeof analysisInputSchema>;
 
+/** Complete documents stay within the same byte budget as file imports. */
+export function serializeAnalysisDocument(data: Record<string, unknown>): string {
+  return JSON.stringify(validateData('perspective', data));
+}
+
 interface InputView {
   to_json(window?: { start_row?: number; end_row?: number }): Promise<unknown[]>;
   delete(): Promise<unknown>;

@@ -34,6 +34,10 @@ npm run pack:apps
 
 `tests/univer-offline-data-review.test.mjs` 验证行列元数据不能越过声明容量，以及只有隐藏/尺寸属性的空行空列在 XLSX 导入时的边界；`tests/xlsx.test.mjs` 同时检查这些空行导出、重新导入和原数据不变。
 
+`node tests/app-usability.mjs` 验证两个 App 的人机协作流程，包含中文/普通动画与英文/减少动画的四个场景（可传 `univer-zh`、`univer-en`、`perspective-zh`、`perspective-en`）：空库首页、真实选择文件导入、Agent 创建/修改/保存、人手改后继续修改、过期保存拒绝、保存重开，以及延迟上下文确认时的串行发送和首页目标清理。使用真实键盘输入核对 Perspective 原生整数编辑，非法值必须在写入前拒绝。报告和截图位于 `test-results/ui/app-usability/`。
+
+`tests/perspective-native-edit.test.mjs` 覆盖手工输入的完整数值与既有类型规则、捕获校验先于原生写入、监听幂等和销毁，以及接近 2 MiB 的完整分析 JSON 往返。共享状态测试还覆盖已保存但副本打开失败、已确认保存后的快照读取失败，以及旧描述晚于显式 prepare 返回时不得覆盖新选区。
+
 需要重现 Perspective 的完整非地图图集时，在最新构建后运行：
 
 ```sh

@@ -5,7 +5,7 @@ import { z } from 'zod';
 
 import { type AppDocument, type Kind, validateData } from './contracts';
 import { applySharedHeader, createApp } from './app-presentation';
-import { registerLiveTools, contextText, type LiveEditor } from './live-app';
+import { registerLiveTools, contextText, type LiveEditor, type LiveSaveMode, type LiveSaveResult } from './live-app';
 import {
   FILE_DEEP_LINK_PREFIX,
   FILE_RESOURCE_PREFIX,
@@ -31,7 +31,7 @@ const strings = {
   zh: {
     library: '文档',
     new: '新建',
-    import: '导入 CSV / JSON',
+    import: '导入数据',
     export: '导出 CSV',
     save: '保存',
     saved: '已保存',
@@ -54,11 +54,23 @@ const strings = {
     confirm: '确定',
     saveCopy: '保存副本',
     copiedWithEdits: '副本已保存，当前新增修改仍未保存',
+    documentTitle: '文档标题',
+    welcome: '从你的数据开始',
+    welcomeSpreadsheet: '新建表格，或导入 XLSX、CSV、TSV 和完整工作簿 JSON。',
+    welcomeAnalysis: '导入表格数据，探索图表并点击联动。JSON 支持记录数组、列数组和完整分析文档。',
+    agentHelp: '也可以让 Agent 用你的数据创建内容，再一起修改当前文档。',
+    recentDocuments: '已保存的文档',
+    searchDocuments: '搜索文档',
+    noDocuments: '还没有已保存的文档',
+    noMatches: '没有匹配的文档',
+    supportedFormats: '支持格式',
+    savedDraftUnchecked: '已保存，当前编辑状态未能核对；请检查后继续',
+    copyDraftUnchecked: '副本已保存，当前内容仍保留；请检查后继续',
   },
   en: {
     library: 'Documents',
     new: 'New',
-    import: 'Import CSV / JSON',
+    import: 'Import data',
     export: 'Export CSV',
     save: 'Save',
     saved: 'Saved',
@@ -81,6 +93,18 @@ const strings = {
     confirm: 'OK',
     saveCopy: 'Save copy',
     copiedWithEdits: 'Copy saved. New edits remain unsaved in this document.',
+    documentTitle: 'Document title',
+    welcome: 'Start with your data',
+    welcomeSpreadsheet: 'Create a spreadsheet, or import XLSX, CSV, TSV and full workbook JSON.',
+    welcomeAnalysis: 'Import tabular data to explore charts and linked views. JSON accepts records, column arrays and full analysis documents.',
+    agentHelp: 'You can also ask your agent to create content from your data and refine the current document with you.',
+    recentDocuments: 'Saved documents',
+    searchDocuments: 'Search documents',
+    noDocuments: 'No saved documents yet',
+    noMatches: 'No matching documents',
+    supportedFormats: 'Supported formats',
+    savedDraftUnchecked: 'Saved. The current draft could not be checked; review it before continuing.',
+    copyDraftUnchecked: 'Copy saved. The current draft is retained; review it before continuing.',
   },
 };
 const icons: Record<string, string> = {
@@ -128,6 +152,12 @@ export function mountApp(
   let finishIdle: (() => void) | undefined;
   let incoming = Promise.resolve();
   let contextTimer: ReturnType<typeof setTimeout> | undefined;
+  let contextTail: Promise<void> = Promise.resolve();
+  let contextSequence = 0;
+  let sharingContext = false, contextRequested = false;
+  let libraryDocuments: { id: string; title: string; updatedAt: string }[] = [];
+  let libraryQuery = '';
+  let libraryLoaded = false;
   const events = new AbortController();
   const app = createApp({ name: `${label} Offline`, version: '0.1.0' }, { tools: {} });
   const t = (key: keyof typeof strings.zh) => strings[locale][key];
@@ -158,7 +188,17 @@ export function mountApp(
     (event.target as HTMLElement).scrollIntoView({ block: 'nearest', inline: 'nearest' });
   });
   file.accept = options.accept ?? file.accept;
+  function actionStates() {
+    title.disabled = busy;
+    title.readOnly = !current || Boolean(current.sourceFile);
+    for (const button of document.querySelectorAll<HTMLButtonElement>('body > header button[data-action]')) {
+      button.disabled = busy || (!current && ['rename', 'save', 'saveCopy', 'export', 'reload'].includes(button.dataset.action!));
+    }
+    if (exportFormat) exportFormat.disabled = busy || !current;
+    library.querySelectorAll<HTMLButtonElement>('button').forEach(button => { button.disabled = busy; });
+  }
   function labels() {
+    title.setAttribute('aria-label', t('documentTitle'));
     if (exportFormat) {
       const previous = exportFormat.value;
       exportFormat.setAttribute('aria-label', locale === 'zh' ? '导出格式' : 'Export format');
@@ -185,6 +225,7 @@ export function mountApp(
         ? `<svg viewBox="0 0 16 16">${icons[action]}</svg>`
         : caption;
     }
+    actionStates();
   }
   exportFormat?.addEventListener('change', labels);
   labels();
@@ -209,7 +250,7 @@ export function mountApp(
     status.classList.toggle('important', error || readOnly);
   }
   function changed() {
-    if (disposed) return;
+    if (disposed || !current || !editor) return;
     editVersion++;
     dirty = true;
     notice(t('dirty'));
@@ -302,49 +343,52 @@ export function mountApp(
       library?: boolean;
     };
   }
+  function synchronizeContext(value: Record<string, unknown>, unchanged: () => boolean) {
+    contextSequence++;
+    const update = contextTail.then(async () => {
+      if (disposed || !unchanged()) throw new Error('CONFLICT: Context target changed before synchronization.');
+      await app.updateModelContext({ content: [{ type: 'text', text: contextText(value) }] });
+      if (disposed || !unchanged()) throw new Error('CONFLICT: Context target changed during synchronization.');
+    });
+    contextTail = update.catch(() => undefined);
+    return update;
+  }
   async function shareContext() {
-    if (disposed || !current || !editor || !app.getHostCapabilities()?.updateModelContext?.text)
-      return;
-    const original = current,
-      originalEditor = editor,
-      own = generation,
-      version = editVersion;
-    const description = await originalEditor.describe().catch(() => ({}));
-    if (
-      disposed ||
-      current !== original ||
-      editor !== originalEditor ||
-      own !== generation ||
-      version !== editVersion
-    )
-      return;
-    // Sharing is optional. A background or inactive view may be denied by the
-    // host after a successful load/save; it must not change document status.
-    void app
-      .updateModelContext({
-        content: [
-          {
-            type: 'text',
-            text: contextText({
-              app: label,
-              ...(current.sourceFile
-                ? {
-                    file: { name: current.sourceFile.name },
-                    readOnly: current.sourceFile.writable !== true,
-                  }
-                : { documentId: current.id }),
-              title: title.value,
-              ...(!current.sourceFile ? { revision: current.revision } : {}),
-              dirty,
-              ...description,
-            }),
-          },
-        ],
-      })
-      .catch(() => undefined);
+    if (disposed || !app.getHostCapabilities()?.updateModelContext?.text) return;
+    contextRequested = true;
+    if (sharingContext) return;
+    sharingContext = true;
+    try {
+      // Coalesce background changes while a host acknowledgement is pending.
+      // Explicit prepare_context uses the same channel, so a late old summary
+      // cannot overwrite a prepared document or the library's cleared target.
+      while (contextRequested && !disposed) {
+        contextRequested = false;
+        const original = current, originalEditor = editor, own = generation, version = editVersion;
+        const sequence = contextSequence;
+        const unchanged = () => !disposed && current === original && editor === originalEditor &&
+          own === generation && version === editVersion;
+        const description = original && originalEditor ? await originalEditor.describe().catch(() => ({})) : {};
+        if (!unchanged() || sequence !== contextSequence) continue;
+        const value = original && originalEditor ? {
+          app: label,
+          ...(original.sourceFile
+            ? { file: { name: original.sourceFile.name }, readOnly: original.sourceFile.writable !== true }
+            : { documentId: original.id, revision: original.revision }),
+          title: title.value,
+          dirty,
+          ...description,
+        } : { app: label, screen: 'library', activeDocument: null };
+        // Optional sharing failures must not change a successful file status.
+        await synchronizeContext(value, unchanged).catch(() => undefined);
+      }
+    } finally { sharingContext = false; }
   }
   async function load(value: AppDocument) {
     if (disposed) throw new Error('App is closed.');
+    // View tools return small references. Resolve one current saved snapshot;
+    // never replay the creation/open call to obtain the document data.
+    if (value.data === undefined) value = await call('read_document', { id: value.id });
     if (value.kind !== options.kind) throw new Error('Wrong document kind.');
     value.data = validateData(options.kind, value.data);
     const own = ++generation;
@@ -470,6 +514,71 @@ export function mountApp(
     sourceBytes = bytes;
     saveUncertain = false;
   }
+  function renderLibrary() {
+    const focused = document.activeElement as HTMLElement | null;
+    const restoreSearch = focused?.matches('[data-document-search]');
+    const selection = restoreSearch ? [(focused as HTMLInputElement).selectionStart, (focused as HTMLInputElement).selectionEnd] : undefined;
+    const focusedAction = focused?.dataset.libraryAction;
+    const welcome = document.createElement('section');
+    welcome.className = 'library-welcome';
+    const heading = document.createElement('h1');
+    heading.textContent = `${label} · ${t('welcome')}`;
+    const description = document.createElement('p');
+    description.textContent = t(options.spreadsheet ? 'welcomeSpreadsheet' : 'welcomeAnalysis');
+    const help = document.createElement('p');
+    help.textContent = t('agentHelp');
+    const actions = document.createElement('div');
+    actions.className = 'library-actions';
+    for (const action of ['new', 'import'] as const) {
+      const button = document.createElement('button');
+      button.dataset.libraryAction = action;
+      button.textContent = action === 'import' && options.spreadsheet ? t('importSpreadsheet') : t(action);
+      button.addEventListener('click', () => dispatchAction(action));
+      actions.append(button);
+    }
+    const formats = document.createElement('small');
+    formats.textContent = `${t('supportedFormats')}: ${(options.accept ?? '.csv,.tsv,.json').split(',').map(value => value.replace(/^\./, '').toUpperCase()).join(' · ')}`;
+    welcome.append(heading, description, help, actions, formats);
+    const section = document.createElement('section');
+    section.className = 'library-documents';
+    const caption = document.createElement('h2');
+    caption.textContent = t('recentDocuments');
+    const search = document.createElement('input');
+    search.type = 'search';
+    search.dataset.documentSearch = '';
+    search.setAttribute('aria-label', t('searchDocuments'));
+    search.placeholder = t('searchDocuments');
+    search.value = libraryQuery;
+    const grid = document.createElement('div');
+    const populate = () => {
+      grid.className = 'documents';
+      grid.replaceChildren();
+      const matches = libraryDocuments.filter(item => item.title.toLocaleLowerCase().includes(libraryQuery.toLocaleLowerCase()));
+      for (const item of matches) {
+        const button = document.createElement('button');
+        button.className = 'document';
+        button.dataset.documentId = item.id;
+        const name = document.createElement('strong');
+        name.textContent = item.title;
+        const time = document.createElement('time');
+        time.textContent = new Date(item.updatedAt).toLocaleString(locale === 'zh' ? 'zh-CN' : 'en-US');
+        button.append(name, time);
+        button.addEventListener('click', () => void run(async () => load(await call('open_document', { id: item.id }))));
+        grid.append(button);
+      }
+      if (!matches.length) {
+        grid.className = 'library-empty';
+        grid.textContent = t(libraryDocuments.length ? 'noMatches' : 'noDocuments');
+      }
+      actionStates();
+    };
+    search.addEventListener('input', () => { libraryQuery = search.value; populate(); });
+    section.append(caption, search, grid);
+    library.replaceChildren(welcome, section);
+    populate();
+    if (restoreSearch) { search.focus(); search.setSelectionRange(selection?.[0] ?? 0, selection?.[1] ?? 0); }
+    else if (focusedAction) library.querySelector<HTMLButtonElement>(`[data-library-action="${focusedAction}"]`)?.focus();
+  }
   async function showLibrary() {
     const result = await call('list_documents');
     const previous = editor;
@@ -481,35 +590,19 @@ export function mountApp(
     container.replaceChildren();
     container.hidden = true;
     library.hidden = false;
-    library.replaceChildren();
-    const grid = document.createElement('div');
-    grid.className = 'documents';
-    for (const item of result.documents) {
-      const button = document.createElement('button');
-      button.className = 'document';
-      const name = document.createElement('strong');
-      name.textContent = item.title;
-      const time = document.createElement('time');
-      time.textContent = new Date(item.updatedAt).toLocaleString(
-        locale === 'zh' ? 'zh-CN' : 'en-US',
-      );
-      button.append(name, time);
-      button.addEventListener(
-        'click',
-        () => void run(async () => load(await call('open_document', { id: item.id }))),
-      );
-      grid.append(button);
-    }
-    if (!result.documents.length) {
-      grid.className = 'empty';
-      grid.textContent = t('empty');
-    }
-    library.append(grid);
+    libraryDocuments = result.documents;
+    libraryLoaded = true;
     title.value = label;
     current = undefined;
     dirty = false;
+    sourceBytes = undefined;
+    sourceData = undefined;
+    saveUncertain = false;
+    clearTimeout(contextTimer);
+    renderLibrary();
     notice('');
     labels();
+    void shareContext();
   }
   async function exclusive<T>(operation: () => Promise<T>) {
     if (disposed) throw new Error('App is closed.');
@@ -518,20 +611,14 @@ export function mountApp(
     idle = new Promise(resolve => {
       finishIdle = resolve;
     });
-    title.disabled = true;
-    document
-      .querySelectorAll<HTMLButtonElement>('body > header button')
-      .forEach(button => (button.disabled = true));
+    actionStates();
     try {
       return await operation();
     } finally {
       busy = false;
       finishIdle?.();
       if (!disposed) {
-        title.disabled = false;
-        document
-          .querySelectorAll<HTMLButtonElement>('body > header button')
-          .forEach(button => (button.disabled = false));
+        actionStates();
       }
     }
   }
@@ -543,6 +630,130 @@ export function mountApp(
       if (!disposed) notice(error instanceof Error ? error.message : t('error'), true);
     }
   }
+  async function saveCurrent(mode: LiveSaveMode, beforeSave?: () => Promise<void>): Promise<LiveSaveResult> {
+    if (!current || !editor || disposed) throw new Error('No active document.');
+    const original = current, originalEditor = editor, own = generation;
+    const assertActive = () => {
+      if (disposed || own !== generation || current !== original || editor !== originalEditor)
+        throw new Error('CONFLICT: The document changed before saving.');
+    };
+    const savedResult = (saved: AppDocument, status: 'saved' | 'copied'): LiveSaveResult => ({
+      status, savedDocument: { id: saved.id, title: saved.title, revision: saved.revision },
+    });
+    notice(t('saving'));
+    if (mode === 'copy') {
+      const { data, version } = await withInputLocked(async () => {
+        await originalEditor.commitEdit?.();
+        await beforeSave?.();
+        assertActive();
+        const data = await originalEditor.snapshot();
+        return { data, version: editVersion };
+      });
+      const serialized = JSON.stringify(data);
+      assertActive();
+      const copy = await call('import_document', {
+        title: (original.sourceFile ? title.value.replace(/\.[^.]+$/, '') : title.value).slice(0, 120).trim() || t('title'),
+        data,
+      });
+      try {
+        await withInputLocked(async () => {
+          assertActive();
+          await originalEditor.commitEdit?.();
+          assertActive();
+          const latest = await originalEditor.snapshot();
+          if (version !== editVersion || serialized !== JSON.stringify(latest)) {
+            dirty = true;
+            notice(t('copiedWithEdits'));
+            return;
+          }
+          await load(copy);
+        });
+      } catch {
+        if (!disposed && current === original && editor === originalEditor) {
+          dirty = true;
+          notice(t('copyDraftUnchecked'), true);
+        }
+      }
+      return savedResult(copy, 'copied');
+    }
+    if (original.sourceFile) {
+      if (saveUncertain) throw new Error(t('saveUnknown'));
+      if (!original.sourceFile.writable || !original.sourceFile.etag || !sourceBytes || !sourceData || !originalEditor.serializeSource)
+        throw new Error(t('readOnly'));
+      const originalSource = original.sourceFile, bytes = sourceBytes, before = sourceData;
+      const { serialized, savingEditVersion } = await withInputLocked(async () => {
+        await originalEditor.commitEdit?.();
+        await beforeSave?.();
+        assertActive();
+        const serialized = await originalEditor.serializeSource!({ bytes, data: before, name: originalSource.name });
+        return { serialized, savingEditVersion: editVersion };
+      });
+      let binary = '';
+      for (const byte of serialized.bytes) binary += String.fromCharCode(byte);
+      assertActive();
+      let result;
+      try {
+        result = await app.request({
+          method: 'openai/resources/write',
+          params: { uri: originalSource.resourceUri, ifMatch: originalSource.etag, blob: btoa(binary) },
+        }, z.object({ outcome: z.string(), etag: z.string().optional() }));
+      } catch (error) { saveUncertain = true; throw error; }
+      assertActive();
+      if (result.outcome === 'conflict') throw new Error(t('conflict'));
+      if (result.outcome !== 'saved' || !result.etag) {
+        saveUncertain = true;
+        throw new Error(t('saveUnknown'));
+      }
+      originalSource.etag = result.etag;
+      sourceBytes = serialized.bytes;
+      sourceData = structuredClone(serialized.data);
+      try {
+        await withInputLocked(async () => {
+          await originalEditor.commitEdit?.();
+          assertActive();
+          dirty = editVersion !== savingEditVersion ||
+            JSON.stringify(await originalEditor.snapshot()) !== JSON.stringify(serialized.data);
+        });
+        notice(t(dirty ? 'dirty' : 'saved'));
+      } catch {
+        if (!disposed && own === generation && editor === originalEditor) {
+          dirty = true;
+          notice(t('savedDraftUnchecked'), true);
+        }
+      }
+      void shareContext();
+      return savedResult(original, 'saved');
+    }
+    const { data, savingEditVersion } = await withInputLocked(async () => {
+      await originalEditor.commitEdit?.();
+      await beforeSave?.();
+      assertActive();
+      const data = await originalEditor.snapshot();
+      return { data, savingEditVersion: editVersion };
+    });
+    assertActive();
+    const saved = await call('save_document', {
+      id: original.id, expectedRevision: original.revision, title: title.value.trim() || t('title'), data,
+    });
+    assertActive();
+    current = saved;
+    try {
+      await withInputLocked(async () => {
+        await originalEditor.commitEdit?.();
+        if (disposed || own !== generation || editor !== originalEditor) return;
+        dirty = editVersion !== savingEditVersion ||
+          JSON.stringify(await originalEditor.snapshot()) !== JSON.stringify(data);
+      });
+      if (!disposed) notice(t(dirty ? 'dirty' : 'saved'));
+    } catch {
+      if (!disposed && own === generation && editor === originalEditor) {
+        dirty = true;
+        notice(t('savedDraftUnchecked'), true);
+      }
+    }
+    void shareContext();
+    return savedResult(saved, 'saved');
+  }
   const live = registerLiveTools(app, {
     kind: options.kind,
     applySchema: options.applySchema,
@@ -550,7 +761,7 @@ export function mountApp(
     inspectSchema: options.inspectSchema,
     // Prevent a new, uncommitted cell edit during asynchronous calculation or
     // context synchronization. The toolbar lock alone does not cover the canvas.
-    exclusive: operation => exclusive(() => withInputLocked(operation)),
+    exclusive: (operation, lockInput = true) => exclusive(() => lockInput ? withInputLocked(operation) : operation()),
     state() {
       if (disposed || !current || !editor || container.hidden)
         throw new Error('No active document.');
@@ -563,10 +774,10 @@ export function mountApp(
     },
     changed,
     notice,
+    save: saveCurrent,
+    syncContext: synchronizeContext,
   });
-  document.querySelector('header')!.addEventListener('click', event => {
-    const action = (event.target as HTMLElement).closest<HTMLElement>('button')?.dataset.action;
-    if (!action) return;
+  function dispatchAction(action: string) {
     if (action === 'rename') {
       rename();
       return;
@@ -584,118 +795,8 @@ export function mountApp(
           if (current.sourceFile) await loadSourceFile(current.sourceFile);
           else await load(await call('read_document', { id: current.id }));
         }
-        if (action === 'save' && current && editor) {
-          notice(t('saving'));
-          if (current.sourceFile) {
-            if (saveUncertain) throw new Error(t('saveUnknown'));
-            if (
-              !current.sourceFile.writable ||
-              !current.sourceFile.etag ||
-              !sourceBytes ||
-              !sourceData ||
-              !editor.serializeSource
-            )
-              throw new Error(t('readOnly'));
-            const originalEditor = editor;
-            const originalSource = current.sourceFile;
-            const bytes = sourceBytes,
-              before = sourceData;
-            const { serialized, savingEditVersion } = await withInputLocked(async () => {
-              await originalEditor.commitEdit?.();
-              const serialized = await originalEditor.serializeSource!({
-                bytes,
-                data: before,
-                name: originalSource.name,
-              });
-              return { serialized, savingEditVersion: editVersion };
-            });
-            let binary = '';
-            for (const byte of serialized.bytes) binary += String.fromCharCode(byte);
-            let result;
-            try {
-              result = await app.request(
-                {
-                  method: 'openai/resources/write',
-                  params: {
-                    uri: current.sourceFile.resourceUri,
-                    ifMatch: current.sourceFile.etag,
-                    blob: btoa(binary),
-                  },
-                },
-                z.object({ outcome: z.string(), etag: z.string().optional() }),
-              );
-            } catch (error) {
-              saveUncertain = true;
-              throw error;
-            }
-            if (result.outcome === 'conflict') throw new Error(t('conflict'));
-            if (result.outcome !== 'saved' || !result.etag) {
-              saveUncertain = true;
-              throw new Error(t('saveUnknown'));
-            }
-            current.sourceFile.etag = result.etag;
-            sourceBytes = serialized.bytes;
-            sourceData = structuredClone(serialized.data);
-            await withInputLocked(async () => {
-              await originalEditor.commitEdit?.();
-              dirty =
-                editVersion !== savingEditVersion ||
-                JSON.stringify(await originalEditor.snapshot()) !== JSON.stringify(serialized.data);
-            });
-            notice(t(dirty ? 'dirty' : 'saved'));
-            void shareContext();
-            return;
-          }
-          const revision = current.revision;
-          const originalEditor = editor;
-          const { data, savingEditVersion } = await withInputLocked(async () => {
-            await originalEditor.commitEdit?.();
-            const data = await originalEditor.snapshot();
-            return { data, savingEditVersion: editVersion };
-          });
-          const saved = await call('save_document', {
-            id: current.id,
-            expectedRevision: revision,
-            title: title.value.trim() || t('title'),
-            data,
-          });
-          current = saved;
-          await withInputLocked(async () => {
-            await originalEditor.commitEdit?.();
-            dirty =
-              editVersion !== savingEditVersion ||
-              JSON.stringify(await originalEditor.snapshot()) !== JSON.stringify(data);
-          });
-          notice(t(dirty ? 'dirty' : 'saved'));
-          void shareContext();
-        }
-        if (action === 'saveCopy' && current && editor) {
-          const originalEditor = editor,
-            own = generation;
-          const { data, version } = await withInputLocked(async () => {
-            await originalEditor.commitEdit?.();
-            const data = await originalEditor.snapshot();
-            return { data, version: editVersion };
-          });
-          const serialized = JSON.stringify(data);
-          const copy = await call('import_document', {
-            title: title.value.replace(/\.[^.]+$/, '').slice(0, 120) || t('title'),
-            data,
-          });
-          // A user can continue editing the canvas while the copy is being saved.
-          // Commit that input before deciding whether it is safe to switch documents.
-          await withInputLocked(async () => {
-            await originalEditor.commitEdit?.();
-            if (disposed || own !== generation || editor !== originalEditor) return;
-            const latest = await originalEditor.snapshot();
-            if (version !== editVersion || serialized !== JSON.stringify(latest)) {
-              dirty = true;
-              notice(t('copiedWithEdits'));
-              return;
-            }
-            await load(copy);
-          });
-        }
+        if (action === 'save' && current && editor) await saveCurrent('document');
+        if (action === 'saveCopy' && current && editor) await saveCurrent('copy');
         if (action === 'export' && current && editor) {
           await editor.commitEdit?.();
           const output = await editor.exportFile(exportFormat?.value);
@@ -719,6 +820,10 @@ export function mountApp(
       },
       action !== 'save' && action !== 'saveCopy',
     );
+  }
+  document.querySelector('header')!.addEventListener('click', event => {
+    const action = (event.target as HTMLElement).closest<HTMLElement>('button')?.dataset.action;
+    if (action) dispatchAction(action);
   });
   file.addEventListener('change', () => {
     const selected = file.files?.[0];
@@ -794,11 +899,14 @@ export function mountApp(
   const applyContext = () => {
     applySharedHeader(app);
     const ctx = app.getHostContext();
-    locale = ctx?.locale?.startsWith('zh') ? 'zh' : 'en';
+    const nextLocale = ctx?.locale?.startsWith('zh') ? 'zh' : 'en';
+    const localeChanged = locale !== nextLocale;
+    locale = nextLocale;
     const theme = ctx?.theme ?? 'light';
     if (document.documentElement.dataset.theme !== theme)
       document.documentElement.dataset.theme = theme;
     labels();
+    if (localeChanged && libraryLoaded && !current && !library.hidden) renderLibrary();
   };
   app.onhostcontextchanged = applyContext;
   app.onteardown = async () => {

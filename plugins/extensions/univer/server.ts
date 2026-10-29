@@ -42,7 +42,7 @@ startServer(
     {
       name: 'create_spreadsheet',
       description:
-        'Create a real editable spreadsheet in the conversation from column headers and rows. Use for budgets, schedules, inventories and tabular work. Strings are literal; use update_cells for formulas. Data stays on this machine.',
+        'Create a real editable spreadsheet from column headers and rows and open its interactive interface. Use for budgets, schedules, inventories and tabular work. Strings are literal; use update_cells for formulas. Data stays on this machine.',
       schema: z.object({
         title: titleSchema,
         columns: z.array(z.string().max(120)).max(100).default([]),

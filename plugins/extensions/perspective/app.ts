@@ -15,7 +15,8 @@ import { mountApp } from '../../../shared/ui';
 import { boundedQueryResult, rowsSchema, type Scalar, validateData } from '../../../shared/contracts';
 import { analysisPlugins, analysisSchema, analysisValue, type AnalysisTypes } from '../../../shared/analysis';
 import { analysisApplySchema, analysisInspectSchema, analysisQuerySchema } from './app-protocol';
-import { base64FromBytes, parseAnalysisInput, type AnalysisInput } from './data-input';
+import { base64FromBytes, parseAnalysisInput, serializeAnalysisDocument, type AnalysisInput } from './data-input';
+import { createNativeEditGuard, type NativeEditTable } from './native-edit';
 import { activeAnalysisConfig, normalizeAnalysisWorkspace, patchAnalysisConfig, patchAnalysisWorkspace, type AnalysisConfig, type AnalysisData, type AnalysisLayout, type AnalysisWorkspace } from './workspace';
 
 const bytes = (base64: string) => Uint8Array.from(atob(base64), c => c.charCodeAt(0)).buffer;
@@ -76,6 +77,25 @@ mountApp('Perspective', async (container, changed, app, _initialDocument, reques
   let masterPanels = new Set<string>();
   let selection: unknown;
   const events = new AbortController();
+  let nativeEditFeedback = '';
+  const guardNativeEdit = createNativeEditGuard({
+    schema: () => sourceSchema,
+    signal: events.signal,
+    invalid(column, type) {
+      const expected = type === 'integer'
+        ? text('−2147483648 到 2147483647 的整数', 'an integer from −2147483648 to 2147483647')
+        : type === 'float' ? text('有限数值', 'a finite decimal number')
+        : type === 'date' ? 'YYYY-MM-DD'
+        : type === 'datetime' ? text('含时区的 ISO 日期时间，例如 2026-10-29T08:30:00Z', 'an ISO date-time with a timezone, for example 2026-10-29T08:30:00Z')
+        : text('最多 32768 个字符的文本', 'text of at most 32768 characters');
+      nativeEditFeedback = text(`“${column}”未写入：请输入${expected}。原值已保留。`, `“${column}” was not changed. Enter ${expected}. The original value was kept.`);
+      feedback.textContent = nativeEditFeedback;
+    },
+    valid() {
+      if (nativeEditFeedback && feedback.textContent === nativeEditFeedback) feedback.textContent = '';
+      nativeEditFeedback = '';
+    },
+  });
   const hostTheme = () => document.documentElement.dataset.theme === 'dark' ? 'Pro Dark' : 'Pro Light';
   function assertOpen() { if (disposed) throw new Error('Analysis is closed.'); }
   async function refreshSource() {
@@ -112,6 +132,13 @@ mountApp('Perspective', async (container, changed, app, _initialDocument, reques
     if (disposed || loading || !table) return;
     const saved = await element.saveWorkspace();
     if (disposed) return;
+    // Datagrid plugins are viewer-owned light DOM children. Each exposes its
+    // regular-table in an open shadow root; getMeta is its public cell API.
+    // Attach inside that root because cell-to-cell focus events stay inside it.
+    for (const plugin of element.querySelectorAll('perspective-viewer-datagrid')) {
+      const table = plugin.shadowRoot?.querySelector<NativeEditTable>('regular-table');
+      if (table) guardNativeEdit(table);
+    }
     masterPanels = new Set(saved.masters ?? []);
     panels.replaceChildren(...Object.entries(saved.panels).map(([id, config]) => new Option(config?.title || `${config?.plugin ?? 'Datagrid'} · ${id}`, id)));
     panels.value = element.getActivePanel() ?? '';
@@ -305,7 +332,7 @@ mountApp('Perspective', async (container, changed, app, _initialDocument, reques
 
   async function exportFile(format = 'csv') {
     const data = await snapshot();
-    if (format === 'analysis') return { text: JSON.stringify(data, null, 2), extension: 'json', mimeType: 'application/json' };
+    if (format === 'analysis') return { text: serializeAnalysisDocument(data), extension: 'json', mimeType: 'application/json' };
     const panel = element.getActivePanel() as string | null;
     if (!table || !panel) throw new Error('Select a chart before exporting.');
     const view: View = await element.getView({ panel, mode: 'clone' });

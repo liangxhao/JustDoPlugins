@@ -34,6 +34,7 @@ stdio MCP 工具操作本地已保存文档。App 工具属于已加载的浏览
 | 当前实例查询       | `spreadsheet_query`    | `analysis_query`                                    |
 | 元数据与精确内容   | `read_range`、`inspect_spreadsheet`、`spreadsheet_inspect` | `list_visualizations`、`inspect_analysis`、`analysis_inspect` |
 | 修改当前实例       | `spreadsheet_apply`    | `analysis_apply`                                    |
+| 保存当前实例       | `spreadsheet_save`     | `analysis_save`                                     |
 | 发送前准备         | `prepare_context`      | `prepare_context`                                   |
 
 文档库的创建、读取、导入和保存接口沿用各插件详细说明。当前 App 的动态工具 schema 从真实 `listTools` 响应取得；新增能力不能只在文本中声明。
@@ -69,6 +70,16 @@ Perspective 的 patch 支持 `{ "panelId": "overview", "config": { "group_by": [
 成功返回 `{ "operationId": "…", "status": "applied", "snapshot": { … } }`，表示当前编辑器已经应用。修改仍为未保存状态，需要主动保存到文档库或经批准写回源文件。冲突、不可编辑、关闭或未知结果返回 `isError: true`；每个实例最多接受 128 个操作 ID，保留期间同一 ID 不能再次执行。派发后响应丢失也不能重放，先读取当前内容核对结果。
 
 调用方使用宿主已准入的确切 AppBridge 和当前会话权限选择目标；插件不从标题、位置、最后消息或 App 自报 JSON 取得授权。这里不新增 Gateway 编辑路由，不假造原生 run、toolCallId、viewId 或历史回执。
+
+### 保存当前内容
+
+两个 App 的 save 接受 `operationId`、`documentId`、`baseContentStamp` 及 `mode: document/copy`（默认 `document`）。在提交输入的短暂锁内重新验证完整内容戳，再使用与界面相同的保存规则；网络等待期间允许继续手改，完成后新编辑仍为 dirty。返回 `status: saved/copied`、`savedDocument: { id, title, revision }` 和当前快照，两者可能指向不同 ID。已确认持久化后若当前快照读取失败，返回 `snapshotUnavailable: true`，不能误报写入失败或据此重复操作。
+
+保存与 apply 共享当前实例的 128 个操作 ID 上限，dispatch 后未知结果不重放。本地保存使用 revision CAS；源文件仅接受显式 `copy` 保存为本地文档，既有源文件审批和 ETag 写回仍由界面流程处理。不用有界预览拼出完整文档覆盖保存。
+
+### 文档库状态
+
+手动入口首页提供文字新建、导入、格式说明和文档搜索。无当前文档时标题只读，保存、导出和重读禁用。返回文档库时清除上下文的活动目标，发送 `{ app, screen: 'library', activeDocument: null }`。后台摘要合并最新请求，和显式 prepare 共用串行发送通道；请求代次让迟到的旧描述失效。该信息仍只是上下文，不能充当宿主授权。
 
 ### 当前结果查询
 

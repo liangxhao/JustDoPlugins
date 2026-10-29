@@ -34,6 +34,15 @@ missing values are permitted. Keep numeric identifiers as strings when needed.
   `analysis_apply` changes the exact live view configuration and workspace
   at a fresh stamp and unique operation ID. Only its applied response confirms
   a live update; it does not save the document or write a source file.
+- When the user requests persistence, use `analysis_save` on that admitted
+  editor with documentId, a fresh baseContentStamp and a unique operationId.
+  Mode `document` saves the current local document; explicit mode `copy`
+  creates a local copy and is required for file previews. Check savedDocument
+  and the current snapshot separately: user edits made while saving remain
+  dirty, and a new copy may not become the current document. A confirmed saved
+  result with snapshotUnavailable still means the write succeeded. Never
+  reconstruct the full document from bounded previews or replay an unknown save.
+  On the library screen there is no current document to edit.
 - For live creation, submit patch.workspace.panels with stable caller-chosen
   IDs, set activePanel, and provide a split-layout or tab-layout. Choose master
   panel IDs to let user clicks filter detail panels; global_filters persists

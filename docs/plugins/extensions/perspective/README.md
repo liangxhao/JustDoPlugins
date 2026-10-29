@@ -12,6 +12,7 @@ WASM 查询引擎、表格和图表资源随交付包提供，运行时不依赖
 
 启用后附带的 MCP 服务由 OpenClaw 管理，可通过手动应用入口或模型工具打开。
 本地文档库支持新建、导入和重新打开分析文档；空白文档导入数据后开始分析。
+首页提供带文字的新建、导入入口、支持格式提示和文档搜索；未打开文档时标题只读，保存、导出和重新读取不可用。
 停用或卸载父扩展会撤下服务和应用入口，已保存的用户文档保留。
 服务和工具提供随包的明暗 SVG 图标；原生 `skills/tabular-analysis/` 提供按需加载的分析任务与真实工具说明，随扩展启停，不改变宿主权限。
 
@@ -66,6 +67,8 @@ CSV 导入保留字符串编号的前导零；只有整列都可安全识别为�
 从全部记录建立显式列类型，后续记录中的列和首行空值不会被遗漏。单列中的非空值须为一致的字符串、数值或布尔类型；混合类型明确拒绝。数值按浮点列处理，避免 32 位整数截断。
 文档同时保存 `schema`（`float`、`integer`、`boolean`、`string`、`date`、`datetime`），全空列仍保留类型。普通 records 按全部记录推断，数字默认浮点；`integer` 必须是 32 位整数，避免引擎静默截断。日期显式声明，`date` 接受有效 `YYYY-MM-DD` 或 UTC 零点毫秒，`datetime` 接受带时区 ISO 时间或整数毫秒；持久化统一为 UTC 毫秒。初始全空数值列可指定 `schema: { "金额": "float" }`。表格直接编辑会标记未保存，保存读取真实源表，独立于筛选聚合结果。
 
+原生 Datagrid 手工输入在写入前使用同一类型规则检查：整数不能溢出或带小数，浮点须为完整有限数值，文本最多 32768 个字符；日期输入 `YYYY-MM-DD`，日期时间输入带时区的 ISO 格式。非法输入明确提示未写入并保留原值；未改动的本地化显示不会重新解释。集成使用锁定组件版本的公开 `regular-table.getMeta` 和组件自身 open shadowRoot 中的捕获事件，不依赖宿主 DOM 或上游私有模型。完整分析 JSON 使用紧凑序列化，按同一 2 MiB 预算导出并重新导入。
+
 Arrow 支持 IPC stream/file、字典、多个批次及 LZ4/ZSTD 缓冲压缩。支持的物理数据为整数、32/64 位浮点、布尔、UTF-8 字符串、日期和秒/毫秒时间戳；微秒/纳秒时间戳、decimal、binary、嵌套结构及 view/run-end 编码明确拒绝，避免静默舍入。超过精确 JSON 整数范围的数据拒绝；安全但超出 32 位整数范围时，可显式选择 `float`，精确标识符应使用字符串。日期限定四位 ISO 年份，时间精度为毫秒。日期或秒级时间戳需在引擎前验证原始值域，因此其数据缓冲真正压缩时会拒绝并提示导出无压缩 Arrow；普通标量与毫秒时间戳支持上述压缩。
 稀疏记录缺失的字段作为空值处理；`constructor` 等普通列名可用。`__INDEX__`、`__ROW_PATH__` 是引擎保留字段，源列及表达式不能使用，需先改名。
 替换源数据默认保留已经保存的视图配置；不再存在的列会被拒绝，可在同次 `replace_data` 中提供新的 `config`。
@@ -116,8 +119,13 @@ Arrow 支持 IPC stream/file、字典、多个批次及 LZ4/ZSTD 缓冲压缩。
 | `analysis_query`    | 可选 `panelId`；行列窗口默认 25×20、最大 100×20；读取实际聚合结果，包含当前点击联动过滤 |
 | `analysis_inspect`  | `kind: workspace/plugins/style/source/selection`；读取未保存工作区、图表角色、样式/计算参考、源数据页或选区；不保存 |
 | `analysis_apply`    | 内容戳与唯一操作 ID；`patch` 可含 `panelId/config`、`workspace`、`cells`、`append` 或 `rows`；只修改当前实例，主动保存后持久化 |
+| `analysis_save`     | 内容戳与唯一操作 ID；保存当前本地分析，或显式 `mode: copy` 保存本地副本；不写回源文件 |
 
 例如，在新快照上以唯一操作 ID 提交 `patch: { "config": { "group_by": ["部门"], "columns": ["金额"], "aggregates": { "金额": "sum" } } }`。成功返回 `{ "operationId": "…", "status": "applied", "snapshot": { … } }`，说明界面确实应用，仍须主动保存。配置先在真实引擎中校验；更新失败尝试恢复原配置，不伪报成功。
+
+用户要求保存时，用新快照调用 `analysis_save({ operationId, documentId, baseContentStamp, mode })`；`mode` 默认为 `document`，只读来源须显式选 `copy`。结果返回 `status: saved/copied`、准确的 `savedDocument: { id, title, revision }` 和当前 `snapshot`。保存期间的新编辑继续保留为未保存；副本的 ID 可能与当前快照不同。已确认保存后读取失败会返回 `snapshotUnavailable: true`，不能把它当作写入失败重试。旧戳、重复操作和未知写入不重放，也不使用有界预览代替完整内容。
+
+返回文档库后向当前上下文同步 `screen: library`、`activeDocument: null`。后台摘要与显式准备串行，旧描述及迟到回包不能覆盖新目标；首页不会继续向 Agent 暴露上一文档作为当前编辑对象。
 
 多图示例（`workspace.panels` 为完整面板集合，各面板共用本地源表，不传 `table`）：
 

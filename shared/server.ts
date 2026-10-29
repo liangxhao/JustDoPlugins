@@ -122,7 +122,7 @@ export async function startServer(
     { name: `${kind}-app`, version: '0.1.0', icons },
     {
       capabilities: { tools: {}, resources: {} },
-      instructions: `${label} is a local offline MCP App. Use its creation tool for real user data; the result opens an interactive interface. Documents persist locally. Always read the latest revision before editing. Never claim lossless Excel round trips or cloud collaboration.`,
+      instructions: `${label} is a local offline MCP App. Use its creation tool for real user data; the result opens an interactive interface. Saved-document tools read and edit persisted data at an exact revision. For a host-admitted current editor, discover its AppBridge tools: snapshot includes unsaved changes; apply needs a fresh content stamp and unique operation ID; save persists that current document or an explicitly requested local copy. A saved-document read does not include unsaved editing. Source-file writes use the existing approved file save action, not the live save tool. Never replay an unknown mutation, choose an editor by title, or claim lossless Excel round trips or cloud collaboration.`,
     },
   );
   server.setRequestHandler(ListToolsRequestSchema, async () => ({

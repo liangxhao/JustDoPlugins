@@ -18,6 +18,11 @@ export interface LiveState {
   generation: number;
   editVersion: number;
 }
+export type LiveSaveMode = 'document' | 'copy';
+export interface LiveSaveResult {
+  status: 'saved' | 'copied';
+  savedDocument: { id: string; title: string; revision: number };
+}
 
 /** Size-bounded, valid JSON; data previews can never expand the model context without limit. */
 export function contextText(value: Record<string, unknown>) {
@@ -66,10 +71,12 @@ export function registerLiveTools(
     querySchema?: z.ZodObject;
     inspectSchema?: z.ZodObject;
     state(): LiveState;
-    exclusive<T>(operation: () => Promise<T>): Promise<T>;
+    exclusive<T>(operation: () => Promise<T>, lockInput?: boolean): Promise<T>;
     commit(): Promise<void>;
     changed(): void;
     notice(text: string, error?: boolean): void;
+    save?(mode: LiveSaveMode, beforeSave: () => Promise<void>): Promise<LiveSaveResult>;
+    syncContext?(value: Record<string, unknown>, unchanged: () => boolean): Promise<void>;
   },
 ) {
   const prefix = options.kind === 'univer' ? 'spreadsheet' : 'analysis';
@@ -131,6 +138,7 @@ export function registerLiveTools(
     handler: (input: Record<string, unknown>) => Promise<ReturnType<typeof result>>,
     write = false,
     meta?: Record<string, unknown>,
+    lockInput = true,
   ) {
     app.registerTool(
       name,
@@ -142,7 +150,7 @@ export function registerLiveTools(
       },
       async input => {
         try {
-          return await options.exclusive(() => handler(input));
+          return await options.exclusive(() => handler(input), lockInput);
         } catch (error) {
           return {
             isError: true,
@@ -175,7 +183,8 @@ export function registerLiveTools(
         throw new Error(
           'CONFLICT: The editor changed before context synchronization. Prepare again.',
         );
-      await app.updateModelContext({ content: [{ type: 'text', text: contextText(value) }] });
+      if (options.syncContext) await options.syncContext(value, () => same(state));
+      else await app.updateModelContext({ content: [{ type: 'text', text: contextText(value) }] });
       if (!same(state))
         throw new Error(
           'CONFLICT: The editor changed during context synchronization. Prepare again.',
@@ -189,11 +198,31 @@ export function registerLiveTools(
     false,
     { 'workspace/prepare-context': true },
   );
+  const operationFields = {
+    operationId: z.string().min(1).max(128),
+    documentId: z.string().min(1).max(128),
+    baseContentStamp: z.string().uuid(),
+  };
+  async function reserveOperation(
+    input: { operationId: string; documentId: string; baseContentStamp: string },
+    state: LiveState,
+  ) {
+    const base = stamps.get(input.baseContentStamp);
+    if (input.documentId !== state.document.id || !base || base.generation !== state.generation)
+      throw new Error('CONFLICT: Document or editor instance changed. Read a fresh snapshot.');
+    if (operations.has(input.operationId))
+      throw new Error('Repeated operation. Read the current editor; do not replay.');
+    const data = await state.editor.snapshot();
+    if (!same(state) || base.editVersion !== state.editVersion || base.json !== json(state, data))
+      throw new Error('CONFLICT: The document has local edits. Read a fresh snapshot.');
+    if (operations.size >= 128)
+      throw new Error('Reopen the document before further live operations.');
+    // Reserve before mutation or persistence. A lost response never authorizes replay.
+    operations.add(input.operationId);
+  }
   const apply = z
     .object({
-      operationId: z.string().min(1).max(128),
-      documentId: z.string().min(1).max(128),
-      baseContentStamp: z.string().uuid(),
+      ...operationFields,
       patch: options.applySchema,
     })
     .strict();
@@ -205,18 +234,7 @@ export function registerLiveTools(
       const input = apply.parse(raw);
       await options.commit();
       const state = options.state();
-      const base = stamps.get(input.baseContentStamp);
-      if (input.documentId !== state.document.id || !base || base.generation !== state.generation)
-        throw new Error('CONFLICT: Document or editor instance changed. Read a fresh snapshot.');
-      if (operations.has(input.operationId))
-        throw new Error('Repeated operation. Read the current editor; do not replay.');
-      const data = await state.editor.snapshot();
-      if (!same(state) || base.editVersion !== state.editVersion || base.json !== json(state, data))
-        throw new Error('CONFLICT: The document has local edits. Read a fresh snapshot.');
-      if (operations.size >= 128)
-        throw new Error('Reopen the document before further live operations.');
-      // Reserve before mutation. A failed or lost response never authorizes replay.
-      operations.add(input.operationId);
+      await reserveOperation(input, state);
       try {
         await state.editor.apply(input.patch, () => same(state));
         options.changed();
@@ -232,6 +250,55 @@ export function registerLiveTools(
     },
     true,
   );
+  if (options.save) {
+    const save = z
+      .object({ ...operationFields, mode: z.enum(['document', 'copy']).default('document') })
+      .strict();
+    tool(
+      `${prefix}_save`,
+      'Save this exact live document at a fresh content stamp, or explicitly save a local copy. Source-file writing is unavailable through this tool. Edits made while saving remain unsaved. Never replay an unknown result.',
+      save,
+      async raw => {
+        const input = save.parse(raw);
+        if (input.mode === 'document' && options.state().document.sourceFile)
+          throw new Error(
+            'Source files require mode=copy to save a local document. Use the existing file save action for approved source-file writing.',
+          );
+        let reserved = false;
+        const saved = await options.save!(input.mode, async () => {
+          if (reserved) throw new Error('This save has already been dispatched. Do not replay.');
+          const state = options.state();
+          if (input.mode === 'document' && state.document.sourceFile)
+            throw new Error('Source files require mode=copy to save a local document.');
+          await reserveOperation(input, state);
+          reserved = true;
+        });
+        if (!reserved) throw new Error('Saving did not validate the current content stamp.');
+        // Whitelist metadata: source credentials and the full saved content are
+        // never copied into the live tool result.
+        const value = {
+          operationId: input.operationId,
+          status: saved.status,
+          savedDocument: {
+            id: saved.savedDocument.id,
+            title: saved.savedDocument.title,
+            revision: saved.savedDocument.revision,
+          },
+        };
+        stamps.clear();
+        try {
+          return result({ ...value, snapshot: (await snapshot()).value });
+        } catch {
+          // Persistence already succeeded. A later read/close conflict must
+          // not turn that acknowledgement into an apparent write failure.
+          return result({ ...value, snapshotUnavailable: true });
+        }
+      },
+      true,
+      undefined,
+      false,
+    );
+  }
   if (options.querySchema)
     tool(
       `${prefix}_query`,
